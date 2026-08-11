@@ -1,0 +1,4 @@
+node_modules/
+dist/
+_serve.mjs
+*.log

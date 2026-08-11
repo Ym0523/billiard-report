@@ -1,0 +1,46 @@
+name: build-and-deploy
+
+# Firestore の最新バックアップからレポートを生成し、暗号化して GitHub Pages に公開する。
+on:
+  schedule:
+    - cron: '0 12 * * *'   # 毎日 21:00 JST（12:00 UTC）
+  workflow_dispatch: {}      # 手動実行
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Build encrypted report
+        run: node build.mjs
+        env:
+          REPORT_PASSWORD: ${{ secrets.REPORT_PASSWORD }}
+          STORE_ID: ${{ vars.STORE_ID || 'store-a' }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

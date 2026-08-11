@@ -1,0 +1,13 @@
+{
+  "name": "billiard-report",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "ビリヤードPOS 売上分析レポート（パスワードで暗号化した静的サイト）",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "firebase": "^11.0.0"
+  }
+}
