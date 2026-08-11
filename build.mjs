@@ -36,3 +36,7 @@ mkdirSync('dist', { recursive: true });
 writeFileSync('dist/index.html', html);
 writeFileSync('dist/.nojekyll', '');
 console.log(`OK: dist/index.html を生成（${data.kpi.days}営業日 / 総売上 ¥${data.kpi.totalYen.toLocaleString('ja-JP')} / ${(html.length / 1024).toFixed(0)}KB・暗号化済み）`);
+
+// Firebaseクライアントが接続・トークン更新のタイマーを開いたままにするため、
+// 明示的に終了しないと CI でプロセスがハングする（処理は上で完了済み）。
+process.exit(0);
