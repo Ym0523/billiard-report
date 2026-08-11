@@ -26,7 +26,7 @@ const { store, exportedAt } = await loadStore();
 const now = Date.now();
 const data = analyze(store, { store: process.env.STORE_ID || 'store-a', exportedAt, generatedAt: now });
 
-if (!data.kpi.days) { console.error('ERROR: 締めデータ(closings)が0件です。まだ集計できません。'); process.exit(1); }
+if (data.meta.empty) { console.error('ERROR: 締めデータ(closings)が0件です。まだ集計できません。'); process.exit(1); }
 
 const body = renderReport(data);
 const payload = await encrypt(body, password);
@@ -35,7 +35,9 @@ const html = pageTemplate({ payload, reportCss: REPORT_CSS, hint: `期間 ${data
 mkdirSync('dist', { recursive: true });
 writeFileSync('dist/index.html', html);
 writeFileSync('dist/.nojekyll', '');
-console.log(`OK: dist/index.html を生成（${data.kpi.days}営業日 / 総売上 ¥${data.kpi.totalYen.toLocaleString('ja-JP')} / ${(html.length / 1024).toFixed(0)}KB・暗号化済み）`);
+const totDays = data.years.reduce((s, y) => s + y.scope.kpi.days, 0);
+const totYen = data.years.reduce((s, y) => s + y.scope.kpi.totalYen, 0);
+console.log(`OK: dist/index.html を生成（${data.years.length}年度 / ${data.months.length}月度 / ${totDays}営業日 / 総売上 ¥${totYen.toLocaleString('ja-JP')} / ${(html.length / 1024).toFixed(0)}KB・暗号化済み）`);
 
 // Firebaseクライアントが接続・トークン更新のタイマーを開いたままにするため、
 // 明示的に終了しないと CI でプロセスがハングする（処理は上で完了済み）。
