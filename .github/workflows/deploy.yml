@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false   # 実行中のデプロイを途中で切らない（GitHub公式Pagesの推奨）
 
 jobs:
   build:
