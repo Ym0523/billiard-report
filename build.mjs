@@ -37,7 +37,7 @@ writeFileSync('dist/index.html', html);
 writeFileSync('dist/.nojekyll', '');
 const totDays = data.years.reduce((s, y) => s + y.scope.kpi.days, 0);
 const totYen = data.years.reduce((s, y) => s + y.scope.kpi.totalYen, 0);
-console.log(`OK: dist/index.html を生成（${data.years.length}年度 / ${data.months.length}月度 / ${totDays}営業日 / 総売上 ¥${totYen.toLocaleString('ja-JP')} / ${(html.length / 1024).toFixed(0)}KB・暗号化済み）`);
+console.log(`OK: dist/index.html を生成（${data.years.length}年度 / ${data.months.length}月度 / ${data.weeks.length}週度 / ${totDays}営業日 / 総売上 ¥${totYen.toLocaleString('ja-JP')} / ${(html.length / 1024).toFixed(0)}KB・暗号化済み）`);
 
 // Firebaseクライアントが接続・トークン更新のタイマーを開いたままにするため、
 // 明示的に終了しないと CI でプロセスがハングする（処理は上で完了済み）。
