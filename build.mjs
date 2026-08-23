@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { analyze } from './lib/analytics.mjs';
 import { renderReport, REPORT_CSS } from './lib/render.mjs';
+import { renderReorder, REORDER_CSS } from './lib/reorder.mjs';
 import { encrypt, pageTemplate } from './lib/crypto.mjs';
 
 const password = process.env.REPORT_PASSWORD;
@@ -35,6 +36,14 @@ const html = pageTemplate({ payload, reportCss: REPORT_CSS, hint: `期間 ${data
 mkdirSync('dist', { recursive: true });
 writeFileSync('dist/index.html', html);
 writeFileSync('dist/.nojekyll', '');
+
+// 要発注リスト（スマホ用）を reorder.html として同じパスワードで暗号化出力。
+const reorderBody = renderReorder(store, { exportedAt, generatedAt: now });
+const reorderPayload = await encrypt(reorderBody, password);
+const reorderHtml = pageTemplate({ payload: reorderPayload, reportCss: REORDER_CSS, title: '要発注リスト', hint: '要発注リスト。パスワードを入力してください。' });
+writeFileSync('dist/reorder.html', reorderHtml);
+const needCount = (store.items || []).filter((i) => i && i.stock != null && i.reorderPoint != null && Number(i.stock) < Number(i.reorderPoint)).length;
+console.log(`OK: dist/reorder.html を生成（要発注 ${needCount}品・暗号化済み）`);
 const totDays = data.years.reduce((s, y) => s + y.scope.kpi.days, 0);
 const totYen = data.years.reduce((s, y) => s + y.scope.kpi.totalYen, 0);
 console.log(`OK: dist/index.html を生成（${data.years.length}年度 / ${data.months.length}月度 / ${data.weeks.length}週度 / ${totDays}営業日 / 総売上 ¥${totYen.toLocaleString('ja-JP')} / ${(html.length / 1024).toFixed(0)}KB・暗号化済み）`);
