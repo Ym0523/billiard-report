@@ -47,7 +47,7 @@
   var items = [];       // マージ後の表示用
   var mode = 'order';   // 'order' | 'receive'
   var qtyO = {}, qtyR = {};
-  var cat = 'all';
+  var cat = null; // 選択中カテゴリ（発注・入荷はこのカテゴリだけを対象にする）
   var busy = false;
 
   function mergeItems() {
@@ -79,8 +79,15 @@
   function getQty(i) { var m = curMap(); return (i.id in m) ? m[i.id] : defQty(i); }
   function setQty(i, v) { curMap()[i.id] = Math.max(0, v | 0); render(); }
   function step(i) { return mode === 'order' ? (N(i.orderLot) || 1) : 1; }
-  function setMode(m) { mode = m; if (m === 'order') qtyO = {}; else qtyR = {}; cat = 'all'; render(); }
-  function baseList() { return mode === 'order' ? items.filter(function (i) { return isNeed(i) && suggest(i) > 0; }) : items.filter(isWait); }
+  function setMode(m) { mode = m; if (m === 'order') qtyO = {}; else qtyR = {}; ensureCat(); render(); }
+  // このモードの対象商品（カテゴリ絞り込み前）。発注＝要発注、入荷＝入荷待ち。
+  function modeBase() { return mode === 'order' ? items.filter(function (i) { return isNeed(i) && suggest(i) > 0; }) : items.filter(isWait); }
+  // 対象がある（＝タブに出す）カテゴリ一覧。
+  function presentCats() { return CATS.filter(function (c) { return modeBase().some(function (i) { return i.cat === c[0]; }); }); }
+  // 選択中カテゴリを常に有効な値に保つ（無ければ先頭カテゴリ）。カテゴリ別に発注・入荷するため「すべて」は持たない。
+  function ensureCat() { var p = presentCats().map(function (c) { return c[0]; }); if (cat == null || p.indexOf(cat) < 0) cat = p.length ? p[0] : null; }
+  // 発注・入荷・共有の対象は「選択中カテゴリだけ」。他カテゴリの数量は混ざらない。
+  function baseList() { return modeBase().filter(function (i) { return i.cat === cat; }); }
 
   function toast(msg) {
     var t = document.getElementById('toast'); if (!t) return;
@@ -188,10 +195,11 @@
   // ---- 描画
   function render() {
     var app = document.getElementById('app'); if (!app || app.style.display === 'none') return;
+    ensureCat();
     var needCnt = items.filter(isNeed).length;
     var waitTot = items.filter(isWait).reduce(function (s, i) { return s + N(i.onOrder); }, 0);
+    var present = presentCats();
     var base = baseList();
-    var present = CATS.filter(function (c) { return base.some(function (i) { return i.cat === c[0]; }); });
     var picked = base.filter(function (i) { return getQty(i) > 0; });
     var totUnits = picked.reduce(function (s, i) { return s + getQty(i); }, 0);
     var connected = !!fns;
@@ -212,7 +220,7 @@
       : '発注済（入荷待ち）の商品です。届いた数に直して「入荷を登録」を押すと在庫に反映されます。') + '</p>';
 
     if (present.length > 1) {
-      h += '<div class="chips"><button class="chip' + (cat === 'all' ? ' on' : '') + '" data-act="cat" data-cat="all">すべて</button>';
+      h += '<div class="chips">';
       present.forEach(function (c) { h += '<button class="chip' + (cat === c[0] ? ' on' : '') + '" data-act="cat" data-cat="' + c[0] + '">' + c[1] + '</button>'; });
       h += '</div>';
     }
@@ -223,7 +231,7 @@
         : '入荷待ちの商品はありません。発注タブで「発注済にする」と、ここに出ます。') + '</p>';
     }
 
-    var shownCats = (cat === 'all' ? present : present.filter(function (c) { return c[0] === cat; }));
+    var shownCats = present.filter(function (c) { return c[0] === cat; });
     shownCats.forEach(function (c) {
       var rows = base.filter(function (i) { return i.cat === c[0]; });
       if (!rows.length) return;
