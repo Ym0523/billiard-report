@@ -34,9 +34,9 @@ async function loadStore() {
   return fetchStore();
 }
 
-const { store, exportedAt } = await loadStore();
+const { store, exportedAt, purchases } = await loadStore();
 const now = Date.now();
-const data = analyze(store, { store: process.env.STORE_ID || 'store-a', exportedAt, generatedAt: now });
+const data = analyze(store, { store: process.env.STORE_ID || 'store-a', exportedAt, generatedAt: now, purchases: purchases || [] });
 
 if (data.meta.empty) { console.error('ERROR: 締めデータ(closings)が0件です。まだ集計できません。'); process.exit(1); }
 

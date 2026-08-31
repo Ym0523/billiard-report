@@ -155,7 +155,10 @@
     var picked = baseList().filter(function (i) { return getQty(i) > 0; });
     if (!picked.length) return;
     var tot = picked.reduce(function (s, i) { return s + getQty(i); }, 0);
-    if (!confirm('入荷を登録します（' + picked.length + '品・計 ＋' + tot + '）。在庫に反映し、入荷待ちを減らします。')) return;
+    // 金額入力を兼ねた確認。キャンセル＝中止／空欄＝金額なしで登録。
+    var amtStr = prompt('入荷を登録します（' + picked.length + '品・計 ＋' + tot + '）。\nこの入荷の金額（円）を入力（不明なら空欄でOK）。', '');
+    if (amtStr === null) return;
+    var amount = amtStr.replace(/[^0-9]/g, '') === '' ? null : (parseInt(amtStr.replace(/[^0-9]/g, ''), 10) || 0);
     busy = true; render();
     try {
       var batch = fns.writeBatch(db); var now = Date.now();
@@ -168,9 +171,39 @@
         batch.set(fns.doc(db, 'stores', store, 'items', i.id),
           { onOrder: Math.max(0, N(i.onOrder) - q), onOrderAt: now, stock: after, stockAt: now }, { merge: true });
       });
+      // 入荷金額（仕入）を purchases に記録。売上レポートがここを読んで「仕入・粗利」を出す。
+      if (amount != null) {
+        var pid = 'web:' + uuid();
+        batch.set(fns.doc(db, 'stores', store, 'purchases', pid),
+          { id: pid, at: now, total: amount, cat: cat, qty: tot,
+            lines: picked.map(function (i) { return { id: i.id, name: i.name || '', qty: getQty(i) }; }), source: 'web' });
+      }
       await batch.commit();
       qtyR = {};
-      toast('入荷を登録しました（' + picked.length + '品）');
+      toast('入荷を登録しました（' + picked.length + '品' + (amount != null ? '・¥' + amount.toLocaleString() : '') + '）');
+    } catch (e) { toast('保存に失敗しました: ' + (e && e.message || e)); }
+    busy = false; render();
+  }
+
+  // ---- 発注取消（誤発注の差し戻し：在庫は触らず onOrder だけ減らす。stockMoves は発生しない）
+  async function doCancel() {
+    if (busy) return;
+    if (!fns) { toast('接続中です。少し待ってからお試しください。'); return; }
+    var picked = baseList().filter(function (i) { return getQty(i) > 0; });
+    if (!picked.length) return;
+    var tot = picked.reduce(function (s, i) { return s + getQty(i); }, 0);
+    if (!confirm('発注を取り消します（' + picked.length + '品・計 −' + tot + '）。在庫は変わりません。まだ発注点を割っていれば発注タブに戻ります。')) return;
+    busy = true; render();
+    try {
+      var batch = fns.writeBatch(db); var now = Date.now();
+      picked.forEach(function (i) {
+        // 入荷待ち(onOrder)だけを減らす。在庫(stock)・stockMoves には一切触れない。
+        batch.set(fns.doc(db, 'stores', store, 'items', i.id),
+          { onOrder: Math.max(0, N(i.onOrder) - getQty(i)), onOrderAt: now }, { merge: true });
+      });
+      await batch.commit();
+      qtyR = {};
+      toast('発注を取り消しました（' + picked.length + '品）');
     } catch (e) { toast('保存に失敗しました: ' + (e && e.message || e)); }
     busy = false; render();
   }
@@ -217,7 +250,7 @@
 
     h += '<p class="note">' + (mode === 'order'
       ? '在庫が発注点を割った商品です。数量を確認し、発注したら「発注済にする」を押してください。'
-      : '発注済（入荷待ち）の商品です。届いた数に直して「入荷を登録」を押すと在庫に反映されます。') + '</p>';
+      : '発注済（入荷待ち）の商品です。届いた数に直して「入荷を登録」。誤発注は数量を直して「発注取消」で戻せます（在庫は変わりません）。') + '</p>';
 
     if (present.length > 1) {
       h += '<div class="chips">';
@@ -261,6 +294,7 @@
       h += '<button class="b pri" data-act="order"' + (picked.length && !busy ? '' : ' disabled') + '>' + (busy ? '…' : '発注済にする') + '</button>';
     } else {
       h += '<span class="binfo">入荷 ' + picked.length + '品・計 ＋' + totUnits + '</span><span class="sp"></span>';
+      h += '<button class="b ghost" data-act="cancel"' + (picked.length && !busy ? '' : ' disabled') + '>' + (busy ? '…' : '発注取消') + '</button>';
       h += '<button class="b pri" data-act="receive"' + (picked.length && !busy ? '' : ' disabled') + '>' + (busy ? '…' : '入荷を登録') + '</button>';
     }
     h += '</div>';
@@ -277,6 +311,7 @@
     if (act === 'share') { doShare(); return; }
     if (act === 'order') { doOrder(); return; }
     if (act === 'receive') { doReceive(); return; }
+    if (act === 'cancel') { doCancel(); return; }
     var id = el.getAttribute('data-id'); if (!id) return;
     var i = items.find(function (x) { return x.id === id; }); if (!i) return;
     if (act === 'inc') { setQty(i, getQty(i) + step(i)); }
