@@ -155,10 +155,16 @@
     var picked = baseList().filter(function (i) { return getQty(i) > 0; });
     if (!picked.length) return;
     var tot = picked.reduce(function (s, i) { return s + getQty(i); }, 0);
-    // 金額入力を兼ねた確認。キャンセル＝中止／空欄＝金額なしで登録。
-    var amtStr = prompt('入荷を登録します（' + picked.length + '品・計 ＋' + tot + '）。\nこの入荷の金額（円）を入力（不明なら空欄でOK）。', '');
-    if (amtStr === null) return;
-    var amount = amtStr.replace(/[^0-9]/g, '') === '' ? null : (parseInt(amtStr.replace(/[^0-9]/g, ''), 10) || 0);
+    // 金額入力を兼ねた確認。入荷金額は必須（空欄では登録させない）。キャンセル＝中止。
+    var amount = null;
+    while (true) {
+      var amtStr = prompt('入荷を登録します（' + picked.length + '品・計 ＋' + tot + '）。\nこの入荷の金額（円）を入力してください。', '');
+      if (amtStr === null) return; // キャンセル＝中止
+      var digits = amtStr.replace(/[^0-9]/g, '');
+      if (digits === '') { alert('入荷金額を入力してください（0以上の数字）。'); continue; }
+      amount = parseInt(digits, 10) || 0;
+      break;
+    }
     busy = true; render();
     try {
       var batch = fns.writeBatch(db); var now = Date.now();
