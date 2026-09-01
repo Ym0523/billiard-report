@@ -40,6 +40,32 @@ const data = analyze(store, { store: process.env.STORE_ID || 'store-a', exported
 
 if (data.meta.empty) { console.error('ERROR: 締めデータ(closings)が0件です。まだ集計できません。'); process.exit(1); }
 
+// 商品別・直近30日の実売個数（会計基準）を Firestore items.sold30 に保存 → アプリの「30日販売」表示に使う。
+// stock_moves 依存をやめ、売上レポートと同じ会計値・端末間で同一の数にする。
+try {
+  const p2 = (n) => String(n).padStart(2, '0');
+  const jymd = (ms) => { const d = new Date(ms + 9 * 3600000); return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`; };
+  const cut = jymd(now - 30 * 86400000);
+  const cidDate = new Map((store.closings || []).map((c) => [c.id, c.businessDate]));
+  const sold30 = {};
+  for (const it of (store.items || [])) sold30[it.id] = 0; // 全商品を0で初期化（売れていない＝0を明示）
+  for (const s of (store.sales || [])) {
+    if (s.voided) continue;
+    const dt = cidDate.get(s.closingId);
+    if (!dt || dt < cut) continue;
+    for (const l of (s.lines || [])) {
+      const pid = String(l.id || '').split('#')[0];
+      if (!pid) continue;
+      sold30[pid] = (sold30[pid] || 0) + (l.qty || 1);
+    }
+  }
+  const { writeSold30 } = await import('./lib/fetch.mjs');
+  const n = await writeSold30(sold30);
+  console.log(`OK: sold30（直近30日の実売・会計基準）を ${n} 品ぶん Firestore に保存（${cut}〜）`);
+} catch (e) {
+  console.warn('WARN: sold30 の保存に失敗（レポート生成は継続）:', e && e.message || e);
+}
+
 const body = renderReport(data);
 const payload = await encrypt(body, password);
 const html = pageTemplate({ payload, reportCss: REPORT_CSS, hint: `期間 ${data.meta.from}〜${data.meta.to} の売上レポート。パスワードを入力してください。` });
