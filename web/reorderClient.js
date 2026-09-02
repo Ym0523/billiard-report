@@ -207,8 +207,10 @@
         var l = x.l, q = x.q; var it = findItem(l.id) || {}; var after = N(it.stock) + q; var mid = 'web:' + uuid();
         batch.set(fns.doc(db, 'stores', store, 'stockMoves', mid),
           { id: mid, productId: l.id, name: l.name || '', kind: 'receive', delta: q, after: after, at: now, reason: '入荷（Web）' });
+        // ★在庫ミラー(stock)はWebから書かない。入荷は上の stockMove(receive) が権威で、
+        //   在庫端末の全move畳み込み(applyFolded)がミラーを更新する。ここは発注残(onOrder)だけ減らす。
         batch.set(fns.doc(db, 'stores', store, 'items', l.id),
-          { onOrder: Math.max(0, N(it.onOrder) - q), onOrderAt: now, stock: after, stockAt: now }, { merge: true });
+          { onOrder: Math.max(0, N(it.onOrder) - q), onOrderAt: now }, { merge: true });
       });
       var pid = 'web:' + uuid();
       batch.set(fns.doc(db, 'stores', store, 'purchases', pid),
