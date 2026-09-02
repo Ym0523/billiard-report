@@ -42,26 +42,40 @@ if (data.meta.empty) { console.error('ERROR: 締めデータ(closings)が0件で
 
 // 商品別・直近30日の実売個数（会計基準）を Firestore items.sold30 に保存 → アプリの「30日販売」表示に使う。
 // stock_moves 依存をやめ、売上レポートと同じ会計値・端末間で同一の数にする。
+// ★30日換算：販売できた日数が30日未満（開店直後・銘柄切替直後）は、その期間の実売を30日ぶんに換算する。
+//   販売起点 ws = max(30日前, データ最古, その商品の銘柄切替時刻 brandChangedAt)。span=ws〜now の日数(1〜30)。
+//   sold30 = round(期間内実売 / span * 30)。成熟店＆銘柄変更なしなら span=30 で従来どおり（換算なし）。
 try {
-  const p2 = (n) => String(n).padStart(2, '0');
-  const jymd = (ms) => { const d = new Date(ms + 9 * 3600000); return `${d.getUTCFullYear()}-${p2(d.getUTCMonth() + 1)}-${p2(d.getUTCDate())}`; };
-  const cut = jymd(now - 30 * 86400000);
-  const cidDate = new Map((store.closings || []).map((c) => [c.id, c.businessDate]));
-  const sold30 = {};
-  for (const it of (store.items || [])) sold30[it.id] = 0; // 全商品を0で初期化（売れていない＝0を明示）
+  const DAY = 86400000;
+  const cutMs = now - 30 * DAY;
+  // データ最古（非取消の販売の最古 at）。無ければ cutMs。
+  let storeStartMs = now;
+  for (const s of (store.sales || [])) { if (!s.voided && s.at) storeStartMs = Math.min(storeStartMs, Number(s.at)); }
+  if (storeStartMs === now) storeStartMs = cutMs;
+  const bca = new Map((store.items || []).map((it) => [it.id, Number(it.brandChangedAt) || 0]));
+  const raw = {}; // pid -> 期間内(ws以降)の実売個数
+  for (const it of (store.items || [])) raw[it.id] = 0; // 全商品を0で初期化
   for (const s of (store.sales || [])) {
-    if (s.voided) continue;
-    const dt = cidDate.get(s.closingId);
-    if (!dt || dt < cut) continue;
+    if (s.voided || !s.at) continue;
     for (const l of (s.lines || [])) {
       const pid = String(l.id || '').split('#')[0];
       if (!pid) continue;
-      sold30[pid] = (sold30[pid] || 0) + (l.qty || 1);
+      const ws = Math.max(cutMs, storeStartMs, bca.get(pid) || 0);
+      if (Number(s.at) < ws) continue; // その商品の販売起点より前は数えない
+      raw[pid] = (raw[pid] || 0) + (l.qty || 1);
     }
+  }
+  const sold30 = {};
+  let normalized = 0;
+  for (const pid of Object.keys(raw)) {
+    const ws = Math.max(cutMs, storeStartMs, bca.get(pid) || 0);
+    const spanDays = Math.min(30, Math.max(1, Math.ceil((now - ws) / DAY)));
+    sold30[pid] = Math.round((raw[pid] * 30) / spanDays);
+    if (spanDays < 30 && raw[pid] > 0) normalized++;
   }
   const { writeSold30 } = await import('./lib/fetch.mjs');
   const n = await writeSold30(sold30);
-  console.log(`OK: sold30（直近30日の実売・会計基準）を ${n} 品ぶん Firestore に保存（${cut}〜）`);
+  console.log(`OK: sold30（直近30日・会計基準／30日換算）を ${n} 品ぶん Firestore に保存（換算適用 ${normalized} 品）`);
 } catch (e) {
   console.warn('WARN: sold30 の保存に失敗（レポート生成は継続）:', e && e.message || e);
 }
