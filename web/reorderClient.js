@@ -140,7 +140,7 @@
           stock: (v.stock == null ? null : Number(v.stock)),
           reorderPoint: (v.reorderPoint == null ? null : Number(v.reorderPoint)),
           orderLot: (v.orderLot == null ? null : Number(v.orderLot)),
-          onOrder: (v.onOrder == null ? null : Number(v.onOrder)),
+          onOrder: (v.onOrder == null ? null : Math.max(0, Number(v.onOrder))), // 原子的increment(-q)で稀に負になっても表示は0で丸める
         };
       });
       liveById = map; refresh();
@@ -210,7 +210,7 @@
         // ★在庫ミラー(stock)はWebから書かない。入荷は上の stockMove(receive) が権威で、
         //   在庫端末の全move畳み込み(applyFolded)がミラーを更新する。ここは発注残(onOrder)だけ減らす。
         batch.set(fns.doc(db, 'stores', store, 'items', l.id),
-          { onOrder: Math.max(0, N(it.onOrder) - q), onOrderAt: now }, { merge: true });
+          { onOrder: fns.increment(-q), onOrderAt: now }, { merge: true }); // 原子的に減算＝同時操作でも発注残を取りこぼさない
       });
       var pid = 'web:' + uuid();
       batch.set(fns.doc(db, 'stores', store, 'purchases', pid),
@@ -240,7 +240,7 @@
     busy = true; render();
     try {
       var batch = fns.writeBatch(db); var now = Date.now();
-      rem.forEach(function (l) { var it = findItem(l.id) || {}; batch.set(fns.doc(db, 'stores', store, 'items', l.id), { onOrder: Math.max(0, N(it.onOrder) - l.remaining), onOrderAt: now }, { merge: true }); });
+      rem.forEach(function (l) { batch.set(fns.doc(db, 'stores', store, 'items', l.id), { onOrder: fns.increment(-l.remaining), onOrderAt: now }, { merge: true }); }); // 原子的に減算
       if (!order.isLegacy) batch.set(fns.doc(db, 'stores', store, 'orders', order.id), { status: 'cancelled', updatedAt: now }, { merge: true });
       await batch.commit();
       order.lines.forEach(function (l) { delete qtyR[rKey(order.id, l.id)]; });
