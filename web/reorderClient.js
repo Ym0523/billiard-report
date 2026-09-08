@@ -65,6 +65,7 @@
         active: (l.active === false ? false : true),
         reorderPoint: pick('reorderPoint'), orderLot: pick('orderLot'), stock: pick('stock'),
         onOrder: (l.onOrder != null ? l.onOrder : (s.onOrder != null ? s.onOrder : 0)),
+        amazonUrl: (l.amazonUrl != null ? l.amazonUrl : (s.amazonUrl != null ? s.amazonUrl : null)), // ドリンクのAmazon発注リンク（Web管理）
       });
     });
     return out;
@@ -77,9 +78,12 @@
   function setQty(i, v) { qtyO[i.id] = Math.max(0, v | 0); render(); }
   function step(i) { return N(i.orderLot) || 1; }
   function orderBase() { return items.filter(function (i) { return isNeed(i) && suggest(i) > 0; }); }
-  function presentCats() { return CATS.filter(function (c) { return orderBase().some(function (i) { return i.cat === c[0]; }); }); }
+  // ドリンクの自動発注対象（発注点割れ＝要発注のドリンクだけ）。数量は suggest() の推奨値。
+  function drinkNeeds() { return orderBase().filter(function (i) { return i.cat === 'drink'; }); }
+  // ドリンクは専用の Amazon 発注セクションで扱うので、通常のカテゴリ別発注リストからは除外（二重発注を防ぐ）。
+  function presentCats() { return CATS.filter(function (c) { return c[0] !== 'drink' && orderBase().some(function (i) { return i.cat === c[0]; }); }); }
   function ensureCat() { var p = presentCats().map(function (c) { return c[0]; }); if (cat == null || p.indexOf(cat) < 0) cat = p.length ? p[0] : null; }
-  function catList() { return orderBase().filter(function (i) { return i.cat === cat; }); }
+  function catList() { return orderBase().filter(function (i) { return i.cat === cat && i.cat !== 'drink'; }); }
   function setMode(m) { mode = m; if (m === 'order') qtyO = {}; else qtyR = {}; ensureCat(); render(); }
 
   // ---- 入荷タブ（発注バッチ単位）。未入荷の発注＋（バッチに紐づかない旧onOrderは「以前の発注」として救済）
@@ -141,6 +145,7 @@
           reorderPoint: (v.reorderPoint == null ? null : Number(v.reorderPoint)),
           orderLot: (v.orderLot == null ? null : Number(v.orderLot)),
           onOrder: (v.onOrder == null ? null : Math.max(0, Number(v.onOrder))), // 原子的increment(-q)で稀に負になっても表示は0で丸める
+          amazonUrl: (v.amazonUrl == null ? null : String(v.amazonUrl)),        // ドリンクのAmazon発注リンク（Web管理）
         };
       });
       liveById = map; refresh();
@@ -171,6 +176,53 @@
       busy = false; setMode('receive'); return;
     } catch (e) { toast('保存に失敗しました: ' + (e && e.message || e)); }
     busy = false; render();
+  }
+
+  // ---- ドリンクの Amazon 発注リンク（商品ごとに登録・Web管理）
+  async function setAmazonUrl(id) {
+    var it = findItem(id); if (!it) return;
+    if (!fns) { toast('接続中です。少し待ってからお試しください。'); return; }
+    var url = prompt(it.name + ' のAmazon商品URLを貼り付けてください（空にすると削除）：', it.amazonUrl || '');
+    if (url == null) return;
+    url = url.trim();
+    if (url && !/^https?:\/\//i.test(url)) { alert('http(s):// で始まるURLを入力してください。'); return; }
+    try {
+      await fns.setDoc(fns.doc(db, 'stores', store, 'items', id), { amazonUrl: url || null }, { merge: true });
+      toast(url ? 'Amazonリンクを登録しました' : 'Amazonリンクを削除しました');
+    } catch (e) { toast('保存に失敗しました: ' + (e && e.message || e)); }
+  }
+
+  // ---- Amazonで発注：対象ドリンクのAmazonページを開き（ユーザー操作直後＝ポップアップ許可されやすい）、
+  //   社内の発注記録（onOrder加算＋orders）も残す＝入荷タブで到着管理できる。実際の注文確定はAmazon画面で行う。
+  async function amazonOrder(list) {
+    if (busy || !list.length) return;
+    list.forEach(function (x) { try { window.open(x.i.amazonUrl, '_blank', 'noopener'); } catch (_) { /* 無視 */ } });
+    if (!fns) { toast('Amazonを開きました（接続前のため発注記録は未反映）'); return; }
+    busy = true; render();
+    try {
+      var batch = fns.writeBatch(db); var now = Date.now();
+      list.forEach(function (x) { batch.set(fns.doc(db, 'stores', store, 'items', x.i.id), { onOrder: fns.increment(x.q), onOrderAt: now }, { merge: true }); });
+      var oid = 'web:' + uuid();
+      batch.set(fns.doc(db, 'stores', store, 'orders', oid),
+        { id: oid, at: now, cat: 'drink', status: 'open', source: 'web-amazon',
+          lines: list.map(function (x) { return { id: x.i.id, name: x.i.name || '', ordered: x.q, received: 0 }; }) });
+      await batch.commit();
+      toast('Amazonを開き、発注済み（入荷待ち）にしました（' + list.length + '品）');
+      busy = false; setMode('receive'); return;
+    } catch (e) { toast('発注記録に失敗しました: ' + (e && e.message || e)); }
+    busy = false; render();
+  }
+  function orderOneDrinkAmazon(id) {
+    var it = findItem(id); if (!it || !it.amazonUrl) return;
+    var q = suggest(it); if (q <= 0) { toast('この商品はいま要発注ではありません'); return; }
+    amazonOrder([{ i: it, q: q }]);
+  }
+  function orderAllDrinksAmazon() {
+    var picked = drinkNeeds().filter(function (i) { return i.amazonUrl; }).map(function (i) { return { i: i, q: suggest(i) }; }).filter(function (x) { return x.q > 0; });
+    if (!picked.length) { toast('Amazonリンク登録済みの要発注ドリンクがありません'); return; }
+    var totUnits = picked.reduce(function (s, x) { return s + x.q; }, 0);
+    if (!confirm('ドリンク ' + picked.length + '品のAmazonページを開き、発注済み（入荷待ち）にします（計 ' + totUnits + '個）。\n実際の注文確定はAmazon画面で行ってください。よろしいですか？')) return;
+    amazonOrder(picked);
   }
 
   // ---- 発注リストを共有（発注タブの選択カテゴリぶん）
@@ -282,23 +334,51 @@
     app.innerHTML = h;
   }
 
+  // ドリンクの Amazon 発注セクション（要発注のドリンクを Amazon で開いて発注）。発注タブ最上部に出す。
+  function renderDrinkAmazon() {
+    var dn = drinkNeeds();
+    if (!dn.length) return '';
+    var withUrl = dn.filter(function (i) { return i.amazonUrl; });
+    var h = '<div class="amzbox"><div class="amzhd">🥤 ドリンクを Amazon で発注</div>';
+    dn.forEach(function (i) {
+      var q = suggest(i);
+      h += '<div class="amzrow"><div class="rinfo"><div class="rname">' + (i.code ? esc(i.code) + ' ' : '') + esc(i.name) + '</div>';
+      h += '<div class="rmeta"><span class="' + (N(i.stock) <= 0 ? 'zero' : 'low') + '">残' + N(i.stock) + '</span> ／発注点' + (i.reorderPoint == null ? '-' : i.reorderPoint) + ' → 推奨 ×' + q + '</div></div>';
+      if (i.amazonUrl) {
+        h += '<div class="amzact"><button class="b pri sm" data-act="amz-one" data-id="' + i.id + '"' + (busy ? ' disabled' : '') + '>Amazonで発注</button>';
+        h += '<button class="lnk" data-act="amz-set" data-id="' + i.id + '" title="リンク編集">✎</button></div>';
+      } else {
+        h += '<button class="b ghost sm" data-act="amz-set" data-id="' + i.id + '">🔗 リンク登録</button>';
+      }
+      h += '</div>';
+    });
+    h += '<button class="autoord" data-act="amz-all"' + ((withUrl.length && !busy) ? '' : ' disabled') + '>まとめてAmazonで開いて発注（' + withUrl.length + '品）</button>';
+    var missing = dn.length - withUrl.length;
+    if (missing) h += '<div class="amznote">' + missing + '品はAmazonリンク未登録です。各行の「リンク登録」から追加してください。</div>';
+    h += '<div class="amznote">Amazonのページを開きます。数量はAmazon画面で入力し、注文確定してください（届いたら「入荷」タブで登録）。</div>';
+    h += '</div>';
+    return h;
+  }
+
   function renderOrderTab() {
     var present = presentCats();
-    var h = '<p class="note">在庫が発注点を割った商品です。数量を確認し、カテゴリごとに「発注する」を押してください。1回の発注は入荷タブに1件として並びます。</p>';
+    var h = renderDrinkAmazon();
+    h += '<p class="note">在庫が発注点を割った商品です。数量を確認し、カテゴリごとに「発注する」を押してください。1回の発注は入荷タブに1件として並びます。「0」で見送り。</p>';
     if (present.length > 1) {
       h += '<div class="chips">';
       present.forEach(function (c) { h += '<button class="chip' + (cat === c[0] ? ' on' : '') + '" data-act="cat" data-cat="' + c[0] + '">' + c[1] + '</button>'; });
       h += '</div>';
     }
     var rows = catList();
-    if (!rows.length) { h += '<p class="empty">いま要発注の商品はありません。</p>'; return h; }
+    if (!rows.length) { h += '<p class="empty">' + (drinkNeeds().length ? 'ドリンク以外に要発注の商品はありません。' : 'いま要発注の商品はありません。') + '</p>'; return h; }
     rows = rows.slice().sort(function (a, b) { return (N(b.reorderPoint) - N(b.stock)) - (N(a.reorderPoint) - N(a.stock)); });
     h += '<div class="grp"><div class="glabel">' + catLabel(cat) + ' ' + rows.length + '品</div>';
     rows.forEach(function (i) {
       var q = getQty(i); var stock = N(i.stock);
       h += '<div class="row"><div class="rinfo"><div class="rname">' + (i.code ? esc(i.code) + ' ' : '') + esc(i.name) + '</div>';
       h += '<div class="rmeta"><span class="' + (stock <= 0 ? 'zero' : 'low') + '">残' + stock + '</span> ／発注点' + (i.reorderPoint == null ? '-' : i.reorderPoint) + (N(i.onOrder) ? ' 発注中' + N(i.onOrder) : '') + ' → 発注 ×' + q + '</div></div>';
-      h += '<div class="stp"><button class="sbtn" data-act="dec" data-id="' + i.id + '">−</button>';
+      h += '<div class="stp"><button class="sbtn z" data-act="zero" data-id="' + i.id + '" title="見送り（0にする）">0</button>';
+      h += '<button class="sbtn" data-act="dec" data-id="' + i.id + '">−</button>';
       h += '<button class="snum' + (q > 0 ? ' on' : '') + '" data-act="edit" data-id="' + i.id + '">' + q + '</button>';
       h += '<button class="sbtn" data-act="inc" data-id="' + i.id + '">＋</button></div></div>';
     });
@@ -320,7 +400,8 @@
         var q = rGet(o.id, l);
         h += '<div class="row"><div class="rinfo"><div class="rname">' + esc(l.name) + '</div>';
         h += '<div class="rmeta">発注' + l.ordered + (l.received ? '／入荷済' + l.received : '') + '・残' + l.remaining + ' → 今回 ' + q + '</div></div>';
-        h += '<div class="stp"><button class="sbtn" data-act="rdec" data-oid="' + esc(o.id) + '" data-lid="' + esc(l.id) + '">−</button>';
+        h += '<div class="stp"><button class="sbtn z" data-act="rzero" data-oid="' + esc(o.id) + '" data-lid="' + esc(l.id) + '" title="0にする">0</button>';
+        h += '<button class="sbtn" data-act="rdec" data-oid="' + esc(o.id) + '" data-lid="' + esc(l.id) + '">−</button>';
         h += '<button class="snum' + (q > 0 ? ' on' : '') + '" data-act="redit" data-oid="' + esc(o.id) + '" data-lid="' + esc(l.id) + '">＋' + q + '</button>';
         h += '<button class="sbtn" data-act="rinc" data-oid="' + esc(o.id) + '" data-lid="' + esc(l.id) + '">＋</button></div></div>';
       });
@@ -343,6 +424,16 @@
     if (act === 'cat') { cat = el.getAttribute('data-cat'); render(); return; }
     if (act === 'share') { doShare(); return; }
     if (act === 'order') { doOrder(); return; }
+    // ドリンクの Amazon 発注
+    if (act === 'amz-all') { orderAllDrinksAmazon(); return; }
+    if (act === 'amz-one') { orderOneDrinkAmazon(el.getAttribute('data-id')); return; }
+    if (act === 'amz-set') { setAmazonUrl(el.getAttribute('data-id')); return; }
+    // 入荷タブ：この明細を今回0にする（分割入荷で見送り）
+    if (act === 'rzero') {
+      var oz = findOrder(el.getAttribute('data-oid')); if (!oz) return;
+      var lz = findLine(oz, el.getAttribute('data-lid')); if (!lz) return;
+      rSet(oz.id, lz, 0); return;
+    }
     // 入荷タブ：発注バッチ操作
     if (act === 'rcv' || act === 'cxl') {
       var o = findOrder(el.getAttribute('data-oid')); if (!o) return;
@@ -362,6 +453,7 @@
     var it = findItem(id); if (!it) return;
     if (act === 'inc') setQty(it, getQty(it) + step(it));
     else if (act === 'dec') setQty(it, getQty(it) - step(it));
+    else if (act === 'zero') setQty(it, 0); // 見送り＝発注0
     else if (act === 'edit') { var vv = prompt('発注数：' + it.name, String(getQty(it))); if (vv != null) { var nn = parseInt(vv, 10); if (!isNaN(nn)) setQty(it, nn); } }
   });
 
