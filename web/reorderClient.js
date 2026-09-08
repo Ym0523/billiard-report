@@ -50,6 +50,7 @@
   var busy = false;
   var staged = {};          // ドリンクAmazon：カート追加済み（id -> true）。一括発注で入荷待ちへ移す。
   var skipped = {};         // ドリンクAmazon：今回は発注しない（id -> true）。
+  var showLinks = false;    // 「ドリンクのAmazonリンク管理」（全ドリンク）の開閉。
 
   function mergeItems() {
     var ids = {};
@@ -378,6 +379,30 @@
     return h;
   }
 
+  // 全ドリンクの Amazon リンク管理（要発注でないドリンクにも事前に登録できる）。開閉式。
+  function allDrinks() {
+    return items.filter(function (i) { return i.cat === 'drink' && i.active !== false; })
+      .sort(function (a, b) { return String(a.code || a.name).localeCompare(String(b.code || b.name), 'ja'); });
+  }
+  function renderDrinkLinks() {
+    var ds = allDrinks();
+    var reg = ds.filter(function (i) { return i.amazonUrl; }).length;
+    var h = '<button class="linktoggle" data-act="toglinks">' + (showLinks ? '▾' : '▸') + ' ドリンクのAmazonリンクを管理（' + reg + '/' + ds.length + '件 登録済み）</button>';
+    if (!showLinks) return h;
+    h += '<div class="linkbox">';
+    if (!ds.length) { h += '<p class="empty">ドリンクがありません。</p>'; return h + '</div>'; }
+    ds.forEach(function (i) {
+      var has = !!i.amazonUrl;
+      h += '<div class="amzrow"><div class="rinfo"><div class="rname">' + (i.code ? esc(i.code) + ' ' : '') + esc(i.name) + '</div>';
+      h += '<div class="rmeta">' + (has ? '<span class="stg">登録済み</span>' : '<span class="skp">未登録</span>') + '</div></div><div class="amzact">';
+      if (has) h += '<button class="lnk" data-act="amz-open" data-id="' + i.id + '" title="Amazonを開く">↗</button>';
+      h += '<button class="b ' + (has ? 'ghost' : 'pri') + ' sm" data-act="amz-set" data-id="' + i.id + '">' + (has ? '編集' : '🔗 登録') + '</button>';
+      h += '</div></div>';
+    });
+    h += '</div>';
+    return h;
+  }
+
   function renderOrderTab() {
     var present = presentCats();
     var h = renderDrinkAmazon();
@@ -388,7 +413,7 @@
       h += '</div>';
     }
     var rows = catList();
-    if (!rows.length) { h += '<p class="empty">' + (drinkNeeds().length ? 'ドリンク以外に要発注の商品はありません。' : 'いま要発注の商品はありません。') + '</p>'; return h; }
+    if (!rows.length) { h += '<p class="empty">' + (drinkNeeds().length ? 'ドリンク以外に要発注の商品はありません。' : 'いま要発注の商品はありません。') + '</p>'; return h + renderDrinkLinks(); }
     rows = rows.slice().sort(function (a, b) { return (N(b.reorderPoint) - N(b.stock)) - (N(a.reorderPoint) - N(a.stock)); });
     h += '<div class="grp"><div class="glabel">' + catLabel(cat) + ' ' + rows.length + '品</div>';
     rows.forEach(function (i) {
@@ -401,7 +426,7 @@
       h += '<button class="sbtn" data-act="inc" data-id="' + i.id + '">＋</button></div></div>';
     });
     h += '</div>';
-    return h;
+    return h + renderDrinkLinks();
   }
 
   function renderReceiveTab() {
@@ -449,6 +474,7 @@
     if (act === 'amz-unmark') { unmark(el.getAttribute('data-id')); return; }
     if (act === 'amz-commit') { commitStagedDrinks(); return; }
     if (act === 'amz-set') { setAmazonUrl(el.getAttribute('data-id')); return; }
+    if (act === 'toglinks') { showLinks = !showLinks; render(); return; }
     // 入荷タブ：この明細を今回0にする（分割入荷で見送り）
     if (act === 'rzero') {
       var oz = findOrder(el.getAttribute('data-oid')); if (!oz) return;
