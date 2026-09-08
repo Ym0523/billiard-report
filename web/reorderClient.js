@@ -48,8 +48,9 @@
   var cat = null;           // 発注タブの選択中カテゴリ
   var orderView = [];       // 入荷タブに表示中の発注一覧（イベント解決用）
   var busy = false;
-  var staged = {};          // ドリンクAmazon：カート追加済み（id -> true）。一括発注で入荷待ちへ移す。
-  var skipped = {};         // ドリンクAmazon：今回は発注しない（id -> true）。
+  var staged = {};          // ドリンク：Amazonで発注（カート追加済み）。一括発注で入荷待ちへ移す。
+  var other = {};           // ドリンク：別発注（Amazon以外で仕入れる）。まとめて発注済み(入荷待ち)にできる。
+  var skipped = {};         // ドリンク：今回は発注しない（×）。
   var showLinks = false;    // 「ドリンクのAmazonリンク管理」（全ドリンク）の開閉。
 
   function mergeItems() {
@@ -195,25 +196,30 @@
     } catch (e) { toast('保存に失敗しました: ' + (e && e.message || e)); }
   }
 
-  // ---- ①「Amazonで発注」＝Amazonページを開いて “カート追加済み”（ステージング）にする。まだ入荷待ちにはしない。
+  // ---- 選択操作：Amazon（開いて“カート追加済み”）／別発注（Amazon以外で仕入れ）／×（発注しない）。排他。
   function stageDrinkAmazon(id) {
     var it = findItem(id); if (!it || !it.amazonUrl) return;
     try { window.open(it.amazonUrl, '_blank', 'noopener'); } catch (_) { /* 無視 */ }
-    staged[id] = true; delete skipped[id]; render();
+    staged[id] = true; delete other[id]; delete skipped[id]; render();
   }
   function openAmazon(id) { var it = findItem(id); if (it && it.amazonUrl) { try { window.open(it.amazonUrl, '_blank', 'noopener'); } catch (_) { /* 無視 */ } } }
-  function skipDrink(id) { skipped[id] = true; delete staged[id]; render(); }
-  function unmark(id) { delete staged[id]; delete skipped[id]; render(); }
+  function markOther(id) { other[id] = true; delete staged[id]; delete skipped[id]; render(); }
+  function skipDrink(id) { skipped[id] = true; delete staged[id]; delete other[id]; render(); }
+  function unmark(id) { delete staged[id]; delete other[id]; delete skipped[id]; render(); }
 
-  // ---- ②「一括発注」＝カート追加済みのドリンクを、まとめて入荷待ち（onOrder加算＋orders1件）にする。
-  //   実際のAmazon注文確定は各自Amazon画面で済ませてから押す想定。届いたら「入荷」タブで登録。
-  async function commitStagedDrinks() {
+  // ---- まとめて入荷待ちにする（onOrder加算＋orders1件）。kind: 'amazon'（カート追加済み）／'other'（別発注）。
+  //   届いたら「入荷」タブで登録。実際の注文確定/発注は各仕入経路で済ませてから押す想定。
+  async function commitDrinks(kind) {
     if (busy) return;
-    var picked = drinkNeeds().filter(function (i) { return staged[i.id] && i.amazonUrl; })
-      .map(function (i) { return { i: i, q: suggest(i) }; }).filter(function (x) { return x.q > 0; });
-    if (!picked.length) { toast('カート追加済みのドリンクがありません'); return; }
+    var flag = kind === 'amazon' ? staged : other;
+    var picked = drinkNeeds().filter(function (i) { return flag[i.id] && (kind !== 'amazon' || i.amazonUrl); })
+      .map(function (i) { return { i: i, q: getQty(i) }; }).filter(function (x) { return x.q > 0; });
+    if (!picked.length) { toast(kind === 'amazon' ? 'カート追加済みのドリンクがありません' : '別発注のドリンクがありません'); return; }
     var totUnits = picked.reduce(function (s, x) { return s + x.q; }, 0);
-    if (!confirm('カート追加済みのドリンク ' + picked.length + '品を入荷待ちにします（計 ' + totUnits + '個）。\nAmazonでの注文確定は済んでいますか？')) return;
+    var msg = kind === 'amazon'
+      ? 'カート追加済みのドリンク ' + picked.length + '品を入荷待ちにします（計 ' + totUnits + '個）。\nAmazonでの注文確定は済んでいますか？'
+      : '別発注のドリンク ' + picked.length + '品を発注済み（入荷待ち）にします（計 ' + totUnits + '個）。';
+    if (!confirm(msg)) return;
     if (!fns) { toast('接続中です。少し待ってからお試しください。'); return; }
     busy = true; render();
     try {
@@ -221,10 +227,10 @@
       picked.forEach(function (x) { batch.set(fns.doc(db, 'stores', store, 'items', x.i.id), { onOrder: fns.increment(x.q), onOrderAt: now }, { merge: true }); });
       var oid = 'web:' + uuid();
       batch.set(fns.doc(db, 'stores', store, 'orders', oid),
-        { id: oid, at: now, cat: 'drink', status: 'open', source: 'web-amazon',
+        { id: oid, at: now, cat: 'drink', status: 'open', source: kind === 'amazon' ? 'web-amazon' : 'web-other',
           lines: picked.map(function (x) { return { id: x.i.id, name: x.i.name || '', ordered: x.q, received: 0 }; }) });
       await batch.commit();
-      picked.forEach(function (x) { delete staged[x.i.id]; });
+      picked.forEach(function (x) { delete flag[x.i.id]; });
       toast('入荷待ちにしました（' + picked.length + '品・計' + totUnits + '個）');
       busy = false; setMode('receive'); return;
     } catch (e) { toast('発注記録に失敗しました: ' + (e && e.message || e)); }
@@ -346,35 +352,41 @@
   function renderDrinkAmazon() {
     var dn = drinkNeeds();
     if (!dn.length) return '';
-    var h = '<div class="amzbox"><div class="amzhd">🥤 ドリンクを Amazon で発注</div>';
-    var stagedCount = 0;
+    var h = '<div class="amzbox"><div class="amzhd">🥤 ドリンクを発注</div>';
+    var stagedCount = 0, otherCount = 0;
     dn.forEach(function (i) {
-      var q = suggest(i);
-      var isStaged = !!staged[i.id], isSkip = !!skipped[i.id];
-      if (isStaged) stagedCount++;
-      h += '<div class="amzrow' + (isStaged ? ' staged' : (isSkip ? ' skip' : '')) + '"><div class="rinfo"><div class="rname">' + (i.code ? esc(i.code) + ' ' : '') + esc(i.name) + '</div>';
+      var q = getQty(i);
+      var isStaged = !!staged[i.id], isOther = !!other[i.id], isSkip = !!skipped[i.id];
+      if (isStaged) stagedCount++; if (isOther) otherCount++;
+      h += '<div class="amzrow' + (isSkip ? ' skip' : '') + '"><div class="rinfo"><div class="rname">' + (i.code ? esc(i.code) + ' ' : '') + esc(i.name) + '</div>';
       h += '<div class="rmeta">';
-      if (isStaged) h += '<span class="stg">✓ カート追加済み</span>　×' + q;
-      else if (isSkip) h += '<span class="skp">発注しない</span>';
-      else h += '<span class="' + (N(i.stock) <= 0 ? 'zero' : 'low') + '">残' + N(i.stock) + '</span> ／発注点' + (i.reorderPoint == null ? '-' : i.reorderPoint) + ' → 推奨 ×' + q;
-      h += '</div></div><div class="amzact">';
-      if (isStaged) {
-        h += '<button class="lnk" data-act="amz-open" data-id="' + i.id + '" title="Amazonを再度開く">↗</button>';
-        h += '<button class="b ghost sm" data-act="amz-unmark" data-id="' + i.id + '">戻す</button>';
-      } else if (isSkip) {
-        h += '<button class="b ghost sm" data-act="amz-unmark" data-id="' + i.id + '">戻す</button>';
-      } else if (i.amazonUrl) {
-        h += '<button class="b pri sm" data-act="amz-stage" data-id="' + i.id + '"' + (busy ? ' disabled' : '') + '>Amazonで発注</button>';
-        h += '<button class="b ghost sm" data-act="amz-skip" data-id="' + i.id + '">発注しない</button>';
-        h += '<button class="lnk" data-act="amz-set" data-id="' + i.id + '" title="リンク編集">✎</button>';
-      } else {
-        h += '<button class="b ghost sm" data-act="amz-set" data-id="' + i.id + '">🔗 リンク登録</button>';
-        h += '<button class="b ghost sm" data-act="amz-skip" data-id="' + i.id + '">発注しない</button>';
+      if (isStaged) h += '<span class="stg">✓ カート追加済み</span>';
+      else if (isOther) h += '<span class="stg">✓ 別発注</span>';
+      else if (isSkip) h += '<span class="skp">× 発注しない</span>';
+      else h += '<span class="' + (N(i.stock) <= 0 ? 'zero' : 'low') + '">残' + N(i.stock) + '</span> ／発注点' + (i.reorderPoint == null ? '-' : i.reorderPoint);
+      h += '</div></div><div class="amzright">';
+      // 数量ステッパ（発注しない以外で表示）。値は getQty＝通常発注リストと同じ仕組み（一括発注に反映）。
+      if (!isSkip) {
+        h += '<div class="stp"><button class="sbtn" data-act="dec" data-id="' + i.id + '">−</button>';
+        h += '<button class="snum on" data-act="edit" data-id="' + i.id + '">' + q + '</button>';
+        h += '<button class="sbtn" data-act="inc" data-id="' + i.id + '">＋</button></div>';
       }
-      h += '</div></div>';
+      h += '<div class="amzact">';
+      if (isStaged || isOther || isSkip) {
+        if (isStaged) h += '<button class="lnk" data-act="amz-open" data-id="' + i.id + '" title="Amazonを再度開く">↗</button>';
+        h += '<button class="b ghost sm" data-act="amz-unmark" data-id="' + i.id + '">戻す</button>';
+      } else {
+        if (i.amazonUrl) h += '<button class="b pri sm" data-act="amz-stage" data-id="' + i.id + '"' + (busy ? ' disabled' : '') + '>Amazon</button>';
+        else h += '<button class="b ghost sm" data-act="amz-set" data-id="' + i.id + '">🔗 登録</button>';
+        h += '<button class="b ghost sm" data-act="amz-other" data-id="' + i.id + '">別発注</button>';
+        h += '<button class="lnk" data-act="amz-skip" data-id="' + i.id + '" title="発注しない">×</button>';
+        if (i.amazonUrl) h += '<button class="lnk" data-act="amz-set" data-id="' + i.id + '" title="リンク編集">✎</button>';
+      }
+      h += '</div></div></div>';
     });
     h += '<button class="autoord" data-act="amz-commit"' + ((stagedCount && !busy) ? '' : ' disabled') + '>一括発注：カート追加済みを入荷待ちにする（' + stagedCount + '品）</button>';
-    h += '<div class="amznote">「Amazonで発注」でAmazonを開き、Amazon画面でカートに追加（＝カート追加済み）。全部そろったら「一括発注」で入荷待ちにまとめて移します。注文確定はAmazon画面で行ってください（届いたら「入荷」タブで登録）。</div>';
+    h += '<button class="autoord alt" data-act="amz-commit-other"' + ((otherCount && !busy) ? '' : ' disabled') + '>別発注ぶんを発注済み（入荷待ち）にする（' + otherCount + '品）</button>';
+    h += '<div class="amznote">Amazon＝開いてカートに追加（カート追加済み）／別発注＝Amazon以外で仕入れ／×＝発注しない。選び終えたら下のボタンでまとめて入荷待ちにします（届いたら「入荷」タブで登録）。</div>';
     h += '</div>';
     return h;
   }
@@ -470,9 +482,11 @@
     // ドリンクの Amazon 発注（①カート追加済みにする → ②一括発注で入荷待ちへ）
     if (act === 'amz-stage') { stageDrinkAmazon(el.getAttribute('data-id')); return; }
     if (act === 'amz-open') { openAmazon(el.getAttribute('data-id')); return; }
+    if (act === 'amz-other') { markOther(el.getAttribute('data-id')); return; }
     if (act === 'amz-skip') { skipDrink(el.getAttribute('data-id')); return; }
     if (act === 'amz-unmark') { unmark(el.getAttribute('data-id')); return; }
-    if (act === 'amz-commit') { commitStagedDrinks(); return; }
+    if (act === 'amz-commit') { commitDrinks('amazon'); return; }
+    if (act === 'amz-commit-other') { commitDrinks('other'); return; }
     if (act === 'amz-set') { setAmazonUrl(el.getAttribute('data-id')); return; }
     if (act === 'toglinks') { showLinks = !showLinks; render(); return; }
     // 入荷タブ：この明細を今回0にする（分割入荷で見送り）
