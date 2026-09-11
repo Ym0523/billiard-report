@@ -40,13 +40,14 @@
 
   // ---- state
   var db = null, store = 'store-a', fns = null;
-  var seedById = {}, liveById = {}, ordersById = {};
+  var seedById = {}, liveById = {}, ordersById = {}, purchasesById = {};
   var items = [];
   var mode = 'order';       // 'order' | 'receive'
   var qtyO = {};            // 発注数（id -> 数量）
   var qtyR = {};            // 入荷数（'orderId::lineId' -> 数量）
   var cat = null;           // 発注タブの選択中カテゴリ
   var orderView = [];       // 入荷タブに表示中の発注一覧（イベント解決用）
+  var purchaseView = [];    // 入荷履歴（差し戻し用の解決）
   var busy = false;
   var staged = {};          // ドリンク：Amazonで発注（カート追加済み）。一括発注で入荷待ちへ移す。
   var other = {};           // ドリンク：別発注（Amazon以外で仕入れる）。まとめて発注済み(入荷待ち)にできる。
@@ -156,6 +157,9 @@
     }, function (e) { toast('接続エラー: ' + (e && e.message || e)); });
     fs.onSnapshot(fs.collection(db, 'stores', store, 'orders'), function (snap) {
       var m = {}; snap.forEach(function (d) { m[d.id] = d.data(); }); ordersById = m; render();
+    }, function () { /* 無視 */ });
+    fs.onSnapshot(fs.collection(db, 'stores', store, 'purchases'), function (snap) {
+      var m = {}; snap.forEach(function (d) { m[d.id] = d.data(); }); purchasesById = m; render();
     }, function () { /* 無視 */ });
   }
 
@@ -363,6 +367,48 @@
     busy = false; render();
   }
 
+  // ---- 入荷履歴（差し戻し可）。最近の仕入(purchase)を新しい順に。
+  function recentPurchases() {
+    return Object.keys(purchasesById).map(function (id) {
+      var p = purchasesById[id] || {};
+      return { id: id, at: N(p.at), cat: p.cat || 'other', total: N(p.total), qty: N(p.qty), lines: p.lines || [], orderId: p.orderId || null, reverted: !!p.reverted };
+    }).filter(function (p) { return !p.reverted && p.lines.length; })
+      .sort(function (a, b) { return b.at - a.at; }).slice(0, 12);
+  }
+  function findPurchase(id) { for (var i = 0; i < purchaseView.length; i++) if (purchaseView[i].id === id) return purchaseView[i]; return null; }
+
+  // ---- 入荷差し戻し：入荷の逆処理（在庫を戻す補正move＋onOrderを戻す＋発注を未入荷に戻す＋仕入を取消）。
+  async function doRevertPurchase(p) {
+    if (busy) return;
+    if (!fns) { toast('接続中です。少し待ってからお試しください。'); return; }
+    var lines = (p.lines || []).filter(function (l) { return N(l.qty) > 0; });
+    if (!lines.length) return;
+    if (!confirm('この入荷を差し戻します（' + lines.length + '品・計 −' + N(p.qty) + '／仕入 ¥' + N(p.total).toLocaleString() + '）。\n在庫を戻し、入荷待ちに戻します。よろしいですか？')) return;
+    busy = true; render();
+    try {
+      var batch = fns.writeBatch(db); var now = Date.now();
+      lines.forEach(function (l) {
+        var it = findItem(l.id) || {}; var q = N(l.qty); var after = N(it.stock) - q; var mid = 'web:' + uuid();
+        // 在庫を戻す：入荷(+q)を打ち消す補正move（fold は delta 加算なので -q で相殺）。
+        batch.set(fns.doc(db, 'stores', store, 'stockMoves', mid),
+          { id: mid, productId: l.id, name: l.name || '', kind: 'adjust', delta: -q, after: after, at: now, reason: '入荷差戻し' });
+        // 発注残(onOrder)を戻す＝入荷待ちに戻す。
+        batch.set(fns.doc(db, 'stores', store, 'items', l.id), { onOrder: fns.increment(q), onOrderAt: now }, { merge: true });
+      });
+      // 発注(orders)の受領数を戻し、未入荷(open)へ。
+      if (p.orderId && ordersById[p.orderId]) {
+        var src = ordersById[p.orderId]; var sub = {}; lines.forEach(function (l) { sub[l.id] = (sub[l.id] || 0) + N(l.qty); });
+        var newLines = (src.lines || []).map(function (ol) { return { id: ol.id, name: ol.name, ordered: N(ol.ordered), received: Math.max(0, N(ol.received) - (sub[ol.id] || 0)) }; });
+        batch.set(fns.doc(db, 'stores', store, 'orders', p.orderId), { lines: newLines, status: 'open', updatedAt: now }, { merge: true });
+      }
+      // 仕入(purchase)を取消（削除）＝売上レポートの仕入から除外。
+      batch.delete(fns.doc(db, 'stores', store, 'purchases', p.id));
+      await batch.commit();
+      toast('入荷を差し戻しました');
+    } catch (e) { toast('差戻しに失敗しました: ' + (e && e.message || e)); }
+    busy = false; render();
+  }
+
   // ---- 描画
   function render() {
     var app = document.getElementById('app'); if (!app || app.style.display === 'none') return;
@@ -497,7 +543,7 @@
   function renderReceiveTab() {
     orderView = computeOpenOrders();
     var h = '<p class="note">発注ごとに並んでいます。届いた分だけ数量を入れて「入荷を登録」。分割で届いたら残りは次回に残ります。誤発注は「発注取消」。金額の入力は必須です。</p>';
-    if (!orderView.length) { h += '<p class="empty">入荷待ちの発注はありません。発注タブで「発注する」と、ここに1件ずつ並びます。</p>'; return h; }
+    if (!orderView.length) { h += '<p class="empty">入荷待ちの発注はありません。発注タブで「発注する」と、ここに1件ずつ並びます。</p>'; return h + renderReceiveHistory(); }
     orderView.forEach(function (o) {
       var dstr = o.isLegacy ? '以前の発注' : jshort(o.at);
       var summary = o.lines.map(function (l) { return esc(l.name) + '×' + l.ordered; }).join('、');
@@ -516,6 +562,22 @@
       h += '<div class="ordbar"><span class="binfo">今回入荷 計 ＋' + pickTot + '</span><span class="sp"></span>';
       h += '<button class="b ghost" data-act="cxl" data-oid="' + esc(o.id) + '"' + (busy ? ' disabled' : '') + '>発注取消</button>';
       h += '<button class="b pri" data-act="rcv" data-oid="' + esc(o.id) + '"' + (pickTot && !busy ? '' : ' disabled') + '>入荷を登録</button></div>';
+      h += '</div>';
+    });
+    return h + renderReceiveHistory();
+  }
+
+  // 入荷履歴（最近の仕入）。各件に「差し戻し」ボタン。
+  function renderReceiveHistory() {
+    purchaseView = recentPurchases();
+    if (!purchaseView.length) return '';
+    var h = '<div class="glabel" style="margin-top:20px">入荷履歴（差し戻し可・新しい順）</div>';
+    purchaseView.forEach(function (p) {
+      var summary = p.lines.map(function (l) { return esc(l.name) + '×' + N(l.qty); }).join('、');
+      h += '<div class="ordcard">';
+      h += '<div class="ordhd"><span class="ordttl">' + jshort(p.at) + ' ／ ' + catLabel(p.cat) + '　入荷済</span><span class="ordsub">' + summary + '</span></div>';
+      h += '<div class="ordbar"><span class="binfo">計 ＋' + N(p.qty) + '　仕入 ¥' + N(p.total).toLocaleString() + '</span><span class="sp"></span>';
+      h += '<button class="b ghost" data-act="revert" data-pid="' + esc(p.id) + '"' + (busy ? ' disabled' : '') + '>差し戻し</button></div>';
       h += '</div>';
     });
     return h;
@@ -543,6 +605,8 @@
     if (act === 'amz-commit-other') { commitDrinks('other'); return; }
     if (act === 'amz-set') { setAmazonUrl(el.getAttribute('data-id')); return; }
     if (act === 'toglinks') { showLinks = !showLinks; render(); return; }
+    // 入荷履歴：差し戻し
+    if (act === 'revert') { var pp = findPurchase(el.getAttribute('data-pid')); if (pp) doRevertPurchase(pp); return; }
     // 入荷タブ：この明細を今回0にする（分割入荷で見送り）
     if (act === 'rzero') {
       var oz = findOrder(el.getAttribute('data-oid')); if (!oz) return;
