@@ -310,14 +310,11 @@
     var picked = order.lines.map(function (l) { return { l: l, q: rGet(order.id, l) }; }).filter(function (x) { return x.q > 0; });
     if (!picked.length) return;
     var tot = picked.reduce(function (s, x) { return s + x.q; }, 0);
-    var amount = null;
-    while (true) {
-      var a = prompt('入荷を登録します（' + picked.length + '品・計 ＋' + tot + '）。\nこの入荷の金額（円）を入力してください。', '');
-      if (a === null) return;
-      var dg = a.replace(/[^0-9]/g, '');
-      if (dg === '') { alert('入荷金額を入力してください（0以上の数字）。'); continue; }
-      amount = parseInt(dg, 10) || 0; break;
-    }
+    // 金額は任意（空欄でOK＝後で入荷履歴から入力できる）。キャンセルは入荷を中止。
+    var a = prompt('入荷を登録します（' + picked.length + '品・計 ＋' + tot + '）。\n金額（円）を入力。後で入力する場合は空欄のままOK。', '');
+    if (a === null) return;
+    var dg = a.replace(/[^0-9]/g, '');
+    var amount = dg === '' ? null : (parseInt(dg, 10) || 0); // 空欄＝未入力（後で入力）
     busy = true; render();
     try {
       var batch = fns.writeBatch(db); var now = Date.now();
@@ -332,7 +329,7 @@
       });
       var pid = 'web:' + uuid();
       batch.set(fns.doc(db, 'stores', store, 'purchases', pid),
-        { id: pid, at: now, total: amount, cat: order.cat, qty: tot, orderId: order.isLegacy ? null : order.id,
+        { id: pid, at: now, total: amount, amountPending: amount == null, cat: order.cat, qty: tot, orderId: order.isLegacy ? null : order.id,
           lines: picked.map(function (x) { return { id: x.l.id, name: x.l.name || '', qty: x.q }; }), source: 'web' });
       if (!order.isLegacy) {
         var src = ordersById[order.id] || {}; var add = {}; picked.forEach(function (x) { add[x.l.id] = x.q; });
@@ -342,7 +339,7 @@
       }
       await batch.commit();
       picked.forEach(function (x) { delete qtyR[rKey(order.id, x.l.id)]; });
-      toast('入荷を登録しました（' + picked.length + '品・¥' + amount.toLocaleString() + '）');
+      toast('入荷を登録しました（' + picked.length + '品' + (amount == null ? '・金額は後で入力' : '・¥' + amount.toLocaleString()) + '）');
     } catch (e) { toast('保存に失敗しました: ' + (e && e.message || e)); }
     busy = false; render();
   }
@@ -371,11 +368,25 @@
   function recentPurchases() {
     return Object.keys(purchasesById).map(function (id) {
       var p = purchasesById[id] || {};
-      return { id: id, at: N(p.at), cat: p.cat || 'other', total: N(p.total), qty: N(p.qty), lines: p.lines || [], orderId: p.orderId || null, reverted: !!p.reverted };
+      return { id: id, at: N(p.at), cat: p.cat || 'other', total: (p.total == null ? null : N(p.total)), qty: N(p.qty), lines: p.lines || [], orderId: p.orderId || null, reverted: !!p.reverted, pending: (p.total == null || !!p.amountPending) };
     }).filter(function (p) { return !p.reverted && p.lines.length; })
       .sort(function (a, b) { return b.at - a.at; }).slice(0, 12);
   }
   function findPurchase(id) { for (var i = 0; i < purchaseView.length; i++) if (purchaseView[i].id === id) return purchaseView[i]; return null; }
+
+  // ---- 入荷金額を後から入力/修正する。
+  async function setPurchaseAmount(p) {
+    if (!fns) { toast('接続中です。少し待ってからお試しください。'); return; }
+    var a = prompt('入荷金額（円）を入力してください：', p.total == null ? '' : String(p.total));
+    if (a === null) return;
+    var dg = a.replace(/[^0-9]/g, '');
+    if (dg === '') { toast('金額を入力してください（0以上の数字）'); return; }
+    var amount = parseInt(dg, 10) || 0;
+    try {
+      await fns.setDoc(fns.doc(db, 'stores', store, 'purchases', p.id), { total: amount, amountPending: false, updatedAt: Date.now() }, { merge: true });
+      toast('入荷金額を登録しました（¥' + amount.toLocaleString() + '）');
+    } catch (e) { toast('保存に失敗しました: ' + (e && e.message || e)); }
+  }
 
   // ---- 入荷差し戻し：入荷の逆処理（在庫を戻す補正move＋onOrderを戻す＋発注を未入荷に戻す＋仕入を取消）。
   async function doRevertPurchase(p) {
@@ -576,8 +587,9 @@
       var summary = p.lines.map(function (l) { return esc(l.name) + '×' + N(l.qty); }).join('、');
       h += '<div class="ordcard">';
       h += '<div class="ordhd"><span class="ordttl">' + jshort(p.at) + ' ／ ' + catLabel(p.cat) + '　入荷済</span><span class="ordsub">' + summary + '</span></div>';
-      h += '<div class="ordbar"><span class="binfo">計 ＋' + N(p.qty) + '　仕入 ¥' + N(p.total).toLocaleString() + '</span><span class="sp"></span>';
-      h += '<button class="b ghost" data-act="revert" data-pid="' + esc(p.id) + '"' + (busy ? ' disabled' : '') + '>差し戻し</button></div>';
+      h += '<div class="ordbar"><span class="binfo">計 ＋' + N(p.qty) + '　仕入 ' + (p.pending ? '<span class="skp">未入力</span>' : '¥' + N(p.total).toLocaleString()) + '</span><span class="sp"></span>';
+      h += '<button class="b ' + (p.pending ? 'pri' : 'ghost') + ' sm" data-act="setamt" data-pid="' + esc(p.id) + '"' + (busy ? ' disabled' : '') + '>' + (p.pending ? '金額入力' : '金額修正') + '</button>';
+      h += '<button class="b ghost sm" data-act="revert" data-pid="' + esc(p.id) + '"' + (busy ? ' disabled' : '') + '>差し戻し</button></div>';
       h += '</div>';
     });
     return h;
@@ -605,7 +617,8 @@
     if (act === 'amz-commit-other') { commitDrinks('other'); return; }
     if (act === 'amz-set') { setAmazonUrl(el.getAttribute('data-id')); return; }
     if (act === 'toglinks') { showLinks = !showLinks; render(); return; }
-    // 入荷履歴：差し戻し
+    // 入荷履歴：金額を後から入力／差し戻し
+    if (act === 'setamt') { var ps = findPurchase(el.getAttribute('data-pid')); if (ps) setPurchaseAmount(ps); return; }
     if (act === 'revert') { var pp = findPurchase(el.getAttribute('data-pid')); if (pp) doRevertPurchase(pp); return; }
     // 入荷タブ：この明細を今回0にする（分割入荷で見送り）
     if (act === 'rzero') {
