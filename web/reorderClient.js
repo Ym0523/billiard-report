@@ -249,6 +249,56 @@
     else { toast('共有に非対応の端末です'); }
   }
 
+  // ---- お菓子：CSVを作って仕入先へメール発注（宛先固定）。スマホは共有でCSV添付、非対応なら DL＋mailto。
+  var SNACK_TO = 't_kourogi@seika-miyazaki.jp';
+  function ymd() { var d = new Date(Date.now() + 9 * 3600000); var p = function (n) { return String(n).padStart(2, '0'); }; return d.getUTCFullYear() + p(d.getUTCMonth() + 1) + p(d.getUTCDate()); }
+  function csvCell(s) { s = String(s == null ? '' : s); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+  function snackCsv(picked) {
+    var rows = ['コード,商品名,発注数'];
+    picked.forEach(function (x) { rows.push([csvCell(x.i.code || ''), csvCell(x.i.name || ''), x.q].join(',')); });
+    return '﻿' + rows.join('\r\n') + '\r\n'; // BOM付き＝Excelで文字化けしない
+  }
+  async function orderSnacksByEmail() {
+    if (busy) return;
+    var picked = catList().filter(function (i) { return getQty(i) > 0; }).map(function (i) { return { i: i, q: getQty(i) }; });
+    if (!picked.length) { toast('発注する商品がありません'); return; }
+    var tot = picked.reduce(function (s, x) { return s + x.q; }, 0);
+    if (!confirm('お菓子 ' + picked.length + '品（計 ' + tot + '）をメールで発注します。\nCSVを作成し、' + SNACK_TO + ' 宛のメール送信に進みます。よろしいですか？')) return;
+    var fname = 'お菓子発注_' + ymd() + '.csv';
+    var csv = snackCsv(picked);
+    var blob = new Blob([csv], { type: 'text/csv' });
+    var file = null; try { file = new File([blob], fname, { type: 'text/csv' }); } catch (_) { /* File非対応 */ }
+    var body = '菓子発注書（CSV）を添付します。\n宛先: ' + SNACK_TO + '\n\n' + picked.map(function (x) { return '・' + (x.i.code ? x.i.code + ' ' : '') + x.i.name + ' ×' + x.q; }).join('\n');
+    // ① スマホ：共有シートでCSVを添付してメールアプリへ（宛先は手入力／保存先から選択）
+    var shared = false;
+    if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: 'お菓子 発注', text: body }); shared = true; } catch (_) { /* キャンセル/非対応→フォールバック */ }
+    }
+    // ② フォールバック：CSVをダウンロード＋宛先/件名/本文をプリフィルしたメールを起動（CSVは手動添付）
+    if (!shared) {
+      try { var url = URL.createObjectURL(blob); var a = document.createElement('a'); a.href = url; a.download = fname; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 4000); } catch (_) { /* 無視 */ }
+      var mail = 'mailto:' + encodeURIComponent(SNACK_TO) + '?subject=' + encodeURIComponent('お菓子 発注（' + ymd() + '）') + '&body=' + encodeURIComponent(body + '\n\n※ダウンロードしたCSV（' + fname + '）を添付して送信してください。');
+      try { window.location.href = mail; } catch (_) { /* 無視 */ }
+      toast('CSVをダウンロードしました。メールにCSVを添付して送信してください。');
+    }
+    // ③ 社内の発注記録（onOrder加算＋orders1件）＝入荷タブで到着管理
+    if (!fns) return;
+    busy = true; render();
+    try {
+      var batch = fns.writeBatch(db); var now = Date.now();
+      picked.forEach(function (x) { batch.set(fns.doc(db, 'stores', store, 'items', x.i.id), { onOrder: fns.increment(x.q), onOrderAt: now }, { merge: true }); });
+      var oid = 'web:' + uuid();
+      batch.set(fns.doc(db, 'stores', store, 'orders', oid),
+        { id: oid, at: now, cat: 'snack', status: 'open', source: 'web-email',
+          lines: picked.map(function (x) { return { id: x.i.id, name: x.i.name || '', ordered: x.q, received: 0 }; }) });
+      await batch.commit();
+      qtyO = {};
+      toast('発注済み（入荷待ち）にしました（' + picked.length + '品）');
+      busy = false; setMode('receive'); return;
+    } catch (e) { toast('発注記録に失敗しました: ' + (e && e.message || e)); }
+    busy = false; render();
+  }
+
   // ---- 入荷（発注バッチ単位・分割可）: receiveイベント追記＋onOrder減算＋stock更新＋金額(仕入)記録＋発注の受領数更新
   async function doReceiveOrder(order) {
     if (busy) return;
@@ -338,7 +388,10 @@
       var totUnits = picked.reduce(function (s, i) { return s + getQty(i); }, 0);
       h += '<div class="bar"><span class="binfo">発注 ' + picked.length + '品・計 ' + totUnits + '</span><span class="sp"></span>';
       h += '<button class="b ghost" data-act="share"' + (picked.length ? '' : ' disabled') + '>共有</button>';
-      h += '<button class="b pri" data-act="order"' + (picked.length && !busy ? '' : ' disabled') + '>' + (busy ? '…' : '発注する') + '</button></div>';
+      if (cat === 'snack') // お菓子は仕入先へCSVメール発注
+        h += '<button class="b pri" data-act="mailsnack"' + (picked.length && !busy ? '' : ' disabled') + '>' + (busy ? '…' : '📧 メールで発注') + '</button></div>';
+      else
+        h += '<button class="b pri" data-act="order"' + (picked.length && !busy ? '' : ' disabled') + '>' + (busy ? '…' : '発注する') + '</button></div>';
     } else {
       h += renderReceiveTab();
       h += '</div>'; // .wrap
@@ -479,6 +532,7 @@
     if (act === 'cat') { cat = el.getAttribute('data-cat'); render(); return; }
     if (act === 'share') { doShare(); return; }
     if (act === 'order') { doOrder(); return; }
+    if (act === 'mailsnack') { orderSnacksByEmail(); return; }
     // ドリンクの Amazon 発注（①カート追加済みにする → ②一括発注で入荷待ちへ）
     if (act === 'amz-stage') { stageDrinkAmazon(el.getAttribute('data-id')); return; }
     if (act === 'amz-open') { openAmazon(el.getAttribute('data-id')); return; }
