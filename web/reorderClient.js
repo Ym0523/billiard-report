@@ -536,7 +536,16 @@
     }
     var rows = catList();
     if (!rows.length) { h += '<p class="empty">' + (drinkNeeds().length ? 'ドリンク以外に要発注の商品はありません。' : 'いま要発注の商品はありません。') + '</p>'; return h + renderDrinkLinks(); }
-    rows = rows.slice().sort(function (a, b) { return (N(b.reorderPoint) - N(b.stock)) - (N(a.reorderPoint) - N(a.stock)); });
+    // たばこは棚番号（code）順。それ以外は不足の大きい順。
+    if (cat === 'tobacco') {
+      rows = rows.slice().sort(function (a, b) {
+        var na = Number(a.code), nb = Number(b.code);
+        if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+        return String(a.code || '').localeCompare(String(b.code || ''), 'ja');
+      });
+    } else {
+      rows = rows.slice().sort(function (a, b) { return (N(b.reorderPoint) - N(b.stock)) - (N(a.reorderPoint) - N(a.stock)); });
+    }
     h += '<div class="grp"><div class="glabel">' + catLabel(cat) + ' ' + rows.length + '品</div>';
     rows.forEach(function (i) {
       var q = getQty(i); var stock = N(i.stock);
