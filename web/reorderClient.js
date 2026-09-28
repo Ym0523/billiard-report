@@ -659,17 +659,30 @@
   });
 
   // ---- パスワード → 復号（seedで即表示）→ 接続
-  var f = document.getElementById('f'), err = document.getElementById('err'), btn = document.getElementById('btn');
-  f.addEventListener('submit', async function (e) {
-    e.preventDefault(); err.textContent = ''; btn.disabled = true; btn.textContent = '復号中…';
-    var data;
-    try { data = JSON.parse(await decrypt(document.getElementById('pw').value)); }
-    catch (_) { err.textContent = 'パスワードが違います。'; btn.disabled = false; btn.textContent = '開く'; document.getElementById('pw').select(); return; }
+  var PWKEY = 'reorderPw';
+  var f = document.getElementById('f'), err = document.getElementById('err'), btn = document.getElementById('btn'), rem = document.getElementById('remember');
+  async function openWith(pw) {
+    var data = JSON.parse(await decrypt(pw)); // パスワード誤りなら throw
     (data.items || []).forEach(function (i) { seedById[i.id] = i; });
     document.getElementById('gate').style.display = 'none';
     document.getElementById('app').style.display = 'block';
     refresh();
     try { await boot(data.cfg || {}); }
     catch (_) { toast('接続できませんでした（通信状況をご確認ください）。一覧は前回データです。'); }
+  }
+  f.addEventListener('submit', async function (e) {
+    e.preventDefault(); err.textContent = ''; btn.disabled = true; btn.textContent = '復号中…';
+    var pw = document.getElementById('pw').value;
+    try {
+      await openWith(pw);
+      try { if (rem && rem.checked) localStorage.setItem(PWKEY, pw); else localStorage.removeItem(PWKEY); } catch (_) { /* 無視 */ }
+    } catch (_) { err.textContent = 'パスワードが違います。'; btn.disabled = false; btn.textContent = '開く'; document.getElementById('pw').select(); }
   });
+  // 端末に保存済みなら自動で開く（保存値が古い/誤りなら消してゲート表示）。
+  (function () {
+    try {
+      var saved = localStorage.getItem(PWKEY);
+      if (saved) { var p = document.getElementById('pw'); p.value = saved; if (rem) rem.checked = true; openWith(saved).catch(function () { try { localStorage.removeItem(PWKEY); } catch (_) { /* 無視 */ } p.value = ''; }); }
+    } catch (_) { /* 無視 */ }
+  })();
 })();
