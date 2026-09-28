@@ -4,6 +4,7 @@
 // 使い方: REPORT_PASSWORD=xxxx node build.mjs
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { analyze } from './lib/analytics.mjs';
+import { analyzeStock } from './lib/stock.mjs';
 import { renderReport, REPORT_CSS } from './lib/render.mjs';
 import { reorderAppPage } from './lib/reorderApp.mjs';
 import { encrypt, pageTemplate } from './lib/crypto.mjs';
@@ -34,9 +35,11 @@ async function loadStore() {
   return fetchStore();
 }
 
-const { store, exportedAt, purchases } = await loadStore();
+const { store, exportedAt, purchases, stockMoves } = await loadStore();
 const now = Date.now();
 const data = analyze(store, { store: process.env.STORE_ID || 'store-a', exportedAt, generatedAt: now, purchases: purchases || [] });
+// 棚卸レポート・日次在庫（stockMoves 直近180日から整形。BACKUP_FILE 経由なら stockMoves は無いので空）。
+const stock = analyzeStock(store.items || [], stockMoves || []);
 
 if (data.meta.empty) { console.error('ERROR: 締めデータ(closings)が0件です。まだ集計できません。'); process.exit(1); }
 
@@ -80,7 +83,7 @@ try {
   console.warn('WARN: sold30 の保存に失敗（レポート生成は継続）:', e && e.message || e);
 }
 
-const body = renderReport(data);
+const body = renderReport(data, stock);
 const payload = await encrypt(body, password);
 const html = pageTemplate({ payload, reportCss: REPORT_CSS, hint: `期間 ${data.meta.from}〜${data.meta.to} の売上レポート。パスワードを入力してください。` });
 
