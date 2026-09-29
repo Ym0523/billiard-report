@@ -304,14 +304,18 @@
   }
 
   // ---- 入荷（発注バッチ単位・分割可）: receiveイベント追記＋onOrder減算＋stock更新＋金額(仕入)記録＋発注の受領数更新
-  async function doReceiveOrder(order) {
+  //  onlyLineId を渡すとその商品1つだけを入荷（ドリンク＝Amazonで商品ごとに別々に届き金額も別のため、商品ごとに登録）。
+  async function doReceiveOrder(order, onlyLineId) {
     if (busy) return;
     if (!fns) { toast('接続中です。少し待ってからお試しください。'); return; }
-    var picked = order.lines.map(function (l) { return { l: l, q: rGet(order.id, l) }; }).filter(function (x) { return x.q > 0; });
+    var picked = order.lines
+      .filter(function (l) { return !onlyLineId || l.id === onlyLineId; })
+      .map(function (l) { return { l: l, q: rGet(order.id, l) }; }).filter(function (x) { return x.q > 0; });
     if (!picked.length) return;
     var tot = picked.reduce(function (s, x) { return s + x.q; }, 0);
     // 金額は任意（空欄でOK＝後で入荷履歴から入力できる）。キャンセルは入荷を中止。
-    var a = prompt('入荷を登録します（' + picked.length + '品・計 ＋' + tot + '）。\n金額（円）を入力。後で入力する場合は空欄のままOK。', '');
+    var what = onlyLineId ? ('「' + (picked[0].l.name || '') + '」 ＋' + tot) : (picked.length + '品・計 ＋' + tot);
+    var a = prompt('入荷を登録します（' + what + '）。\n金額（円）を入力。後で入力する場合は空欄のままOK。', '');
     if (a === null) return;
     var dg = a.replace(/[^0-9]/g, '');
     var amount = dg === '' ? null : (parseInt(dg, 10) || 0); // 空欄＝未入力（後で入力）
@@ -339,7 +343,7 @@
       }
       await batch.commit();
       picked.forEach(function (x) { delete qtyR[rKey(order.id, x.l.id)]; });
-      toast('入荷を登録しました（' + picked.length + '品' + (amount == null ? '・金額は後で入力' : '・¥' + amount.toLocaleString()) + '）');
+      toast('入荷を登録しました（' + (onlyLineId ? (picked[0].l.name || '') : picked.length + '品') + (amount == null ? '・金額は後で入力' : '・¥' + amount.toLocaleString()) + '）');
     } catch (e) { toast('保存に失敗しました: ' + (e && e.message || e)); }
     busy = false; render();
   }
@@ -562,26 +566,31 @@
 
   function renderReceiveTab() {
     orderView = computeOpenOrders();
-    var h = '<p class="note">発注ごとに並んでいます。届いた分だけ数量を入れて「入荷を登録」。分割で届いたら残りは次回に残ります。誤発注は「発注取消」。金額の入力は必須です。</p>';
+    var h = '<p class="note">発注ごとに並んでいます。届いた分だけ数量を入れて「入荷を登録」。分割で届いたら残りは次回に残ります。誤発注は「発注取消」。金額は空欄でもOK（後で入荷履歴から入力）。<br>ドリンクは商品ごとに届くので、各商品の「入荷」でその商品だけ登録します。</p>';
     if (!orderView.length) { h += '<p class="empty">入荷待ちの発注はありません。発注タブで「発注する」と、ここに1件ずつ並びます。</p>'; return h + renderReceiveHistory(); }
     orderView.forEach(function (o) {
       var dstr = o.isLegacy ? '以前の発注' : jshort(o.at);
       var summary = o.lines.map(function (l) { return esc(l.name) + '×' + l.ordered; }).join('、');
       var pickTot = o.lines.reduce(function (s, l) { return s + rGet(o.id, l); }, 0);
+      var perLine = o.cat === 'drink'; // ドリンクは商品ごとに入荷登録（一括ボタンは出さない）
       h += '<div class="ordcard">';
       h += '<div class="ordhd"><span class="ordttl">' + dstr + ' ／ ' + catLabel(o.cat) + '</span><span class="ordsub">' + summary + '</span></div>';
       o.lines.forEach(function (l) {
         var q = rGet(o.id, l);
-        h += '<div class="row"><div class="rinfo"><div class="rname">' + esc(l.name) + '</div>';
+        // ドリンク（商品ごと入荷）はボタンが1つ多いので、狭い画面では操作を名前の下の行へ回す
+        h += '<div class="row' + (perLine ? ' perline' : '') + '"><div class="rinfo"><div class="rname">' + esc(l.name) + '</div>';
         h += '<div class="rmeta">発注' + l.ordered + (l.received ? '／入荷済' + l.received : '') + '・残' + l.remaining + ' → 今回 ' + q + '</div></div>';
         h += '<div class="stp"><button class="sbtn z" data-act="rzero" data-oid="' + esc(o.id) + '" data-lid="' + esc(l.id) + '" title="0にする">0</button>';
         h += '<button class="sbtn" data-act="rdec" data-oid="' + esc(o.id) + '" data-lid="' + esc(l.id) + '">−</button>';
         h += '<button class="snum' + (q > 0 ? ' on' : '') + '" data-act="redit" data-oid="' + esc(o.id) + '" data-lid="' + esc(l.id) + '">＋' + q + '</button>';
-        h += '<button class="sbtn" data-act="rinc" data-oid="' + esc(o.id) + '" data-lid="' + esc(l.id) + '">＋</button></div></div>';
+        h += '<button class="sbtn" data-act="rinc" data-oid="' + esc(o.id) + '" data-lid="' + esc(l.id) + '">＋</button>';
+        if (perLine) h += '<button class="b pri sm" data-act="rcv1" data-oid="' + esc(o.id) + '" data-lid="' + esc(l.id) + '"' + (q > 0 && !busy ? '' : ' disabled') + '>入荷</button>';
+        h += '</div></div>';
       });
-      h += '<div class="ordbar"><span class="binfo">今回入荷 計 ＋' + pickTot + '</span><span class="sp"></span>';
+      h += '<div class="ordbar">' + (perLine ? '' : '<span class="binfo">今回入荷 計 ＋' + pickTot + '</span>') + '<span class="sp"></span>';
       h += '<button class="b ghost" data-act="cxl" data-oid="' + esc(o.id) + '"' + (busy ? ' disabled' : '') + '>発注取消</button>';
-      h += '<button class="b pri" data-act="rcv" data-oid="' + esc(o.id) + '"' + (pickTot && !busy ? '' : ' disabled') + '>入荷を登録</button></div>';
+      if (!perLine) h += '<button class="b pri" data-act="rcv" data-oid="' + esc(o.id) + '"' + (pickTot && !busy ? '' : ' disabled') + '>入荷を登録</button>';
+      h += '</div>';
       h += '</div>';
     });
     return h + renderReceiveHistory();
@@ -639,6 +648,10 @@
     if (act === 'rcv' || act === 'cxl') {
       var o = findOrder(el.getAttribute('data-oid')); if (!o) return;
       if (act === 'rcv') doReceiveOrder(o); else doCancelOrder(o); return;
+    }
+    if (act === 'rcv1') {
+      var o1 = findOrder(el.getAttribute('data-oid')); if (!o1) return;
+      doReceiveOrder(o1, el.getAttribute('data-lid')); return;
     }
     if (act === 'rinc' || act === 'rdec' || act === 'redit') {
       var ord = findOrder(el.getAttribute('data-oid')); if (!ord) return;
