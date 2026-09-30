@@ -62,11 +62,15 @@
     Object.keys(ids).forEach(function (id) {
       var s = seedById[id] || {}, l = liveById[id] || {};
       var pick = function (k) { return l[k] != null ? l[k] : (s[k] != null ? s[k] : null); };
-      var name = (s.name != null ? s.name : l.name);
+      // 名前はレジが Firestore に書いたライブ値を優先（今日の銘柄変更・空き化がすぐ反映）。無ければ前夜バックアップ(seed)。
+      var name = (l.name != null ? l.name : s.name);
       var catv = (s.cat != null ? s.cat : l.cat);
       if (name == null || catv == null) return;
+      var yen = pick('yen');
       out.push({
         id: id, name: name, cat: catv, code: (s.code != null ? s.code : l.code),
+        // たばこの空きスロット（銘柄未割当・取扱い終了）＝要発注に出さない
+        emptySlot: catv === 'tobacco' && (name === '（空き）' || (yen != null && N(yen) <= 0)),
         active: (l.active === false ? false : true),
         reorderPoint: pick('reorderPoint'), orderLot: pick('orderLot'), stock: pick('stock'),
         onOrder: (l.onOrder != null ? l.onOrder : (s.onOrder != null ? s.onOrder : 0)),
@@ -82,7 +86,7 @@
   function getQty(i) { return (i.id in qtyO) ? qtyO[i.id] : suggest(i); }
   function setQty(i, v) { qtyO[i.id] = Math.max(0, v | 0); render(); }
   function step(i) { return N(i.orderLot) || 1; }
-  function orderBase() { return items.filter(function (i) { return isNeed(i) && suggest(i) > 0; }); }
+  function orderBase() { return items.filter(function (i) { return !i.emptySlot && isNeed(i) && suggest(i) > 0; }); }
   // ドリンクの自動発注対象（発注点割れ＝要発注のドリンクだけ）。数量は suggest() の推奨値。
   function drinkNeeds() { return orderBase().filter(function (i) { return i.cat === 'drink'; }); }
   // ドリンクは専用の Amazon 発注セクションで扱うので、通常のカテゴリ別発注リストからは除外（二重発注を防ぐ）。

@@ -98,7 +98,7 @@ const reorderCfg = { ...FIREBASE_WEB, storeId: process.env.STORE_ID || 'store-a'
 const seedItems = (store.items || [])
   .filter((i) => i && (i.reorderPoint != null || i.stock != null))
   .map((i) => ({
-    id: i.id, cat: i.cat, name: i.name, code: i.code ?? null,
+    id: i.id, cat: i.cat, name: i.name, code: i.code ?? null, yen: i.yen ?? null, // yen はたばこ空きスロット判定用
     reorderPoint: i.reorderPoint ?? null, orderLot: i.orderLot ?? null,
     stock: i.stock ?? null, onOrder: i.onOrder ?? null,
   }));
