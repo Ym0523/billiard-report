@@ -150,6 +150,7 @@
         var v = d.data();
         map[d.id] = {
           id: d.id, cat: v.cat, name: v.name, code: v.code, active: v.active,
+          yen: (v.yen == null ? null : Number(v.yen)), // たばこ空きスロット判定用（無いと前夜の seed の「空き・0円」で判定してしまう）
           stock: (v.stock == null ? null : Number(v.stock)),
           reorderPoint: (v.reorderPoint == null ? null : Number(v.reorderPoint)),
           orderLot: (v.orderLot == null ? null : Number(v.orderLot)),
