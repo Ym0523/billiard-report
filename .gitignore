@@ -2,3 +2,7 @@ node_modules/
 dist/
 _serve.mjs
 *.log
+
+# 操作マニュアルの確認用（公開しない）
+web/manual/_preview-*.jpg
+web/manual/img/_debug.jpg

@@ -2,7 +2,7 @@
 //   データ: 既定は Firestore から取得。BACKUP_FILE=path.json を指定すればローカルJSONを使う。
 //   パスワード: 環境変数 REPORT_PASSWORD（必須）。
 // 使い方: REPORT_PASSWORD=xxxx node build.mjs
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, cpSync } from 'node:fs';
 import { analyze } from './lib/analytics.mjs';
 import { analyzeStock } from './lib/stock.mjs';
 import { renderReport, REPORT_CSS } from './lib/render.mjs';
@@ -106,6 +106,15 @@ const reorderPayload = await encrypt(JSON.stringify({ cfg: reorderCfg, items: se
 const reorderHtml = reorderAppPage({ payload: reorderPayload, hint: 'パスワードを入力してください（売上レポートと同じ）。' });
 writeFileSync('dist/reorder.html', reorderHtml);
 console.log(`OK: dist/reorder.html を生成（ライブ版・Firestore直結／発注・入荷対応・seed ${seedItems.length}品）`);
+
+// 操作マニュアル（スタッフ向け・パスワード無し・売上などの数字は載せない静的ページ）。画像は web/manual/img。
+if (existsSync('web/manual.html')) {
+  // 写真の番号マーカーの位置（tools/manual/capture.mjs が記録）をページに埋め込む
+  const shotsJson = existsSync('web/manual/shots.json') ? readFileSync('web/manual/shots.json', 'utf8') : '{}';
+  writeFileSync('dist/manual.html', readFileSync('web/manual.html', 'utf8').replace('__SHOTS__', JSON.stringify(JSON.parse(shotsJson)).replace(/</g, '\\u003c')));
+  if (existsSync('web/manual/img')) cpSync('web/manual/img', 'dist/manual/img', { recursive: true, filter: (src) => !/_debug\.jpg$/.test(src) });
+  console.log('OK: dist/manual.html を配置（操作マニュアル）');
+}
 const totDays = data.years.reduce((s, y) => s + y.scope.kpi.days, 0);
 const totYen = data.years.reduce((s, y) => s + y.scope.kpi.totalYen, 0);
 console.log(`OK: dist/index.html を生成（${data.years.length}年度 / ${data.months.length}月度 / ${data.weeks.length}週度 / ${totDays}営業日 / 総売上 ¥${totYen.toLocaleString('ja-JP')} / ${(html.length / 1024).toFixed(0)}KB・暗号化済み）`);

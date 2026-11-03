@@ -1,0 +1,514 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ビリヤードPOS 操作マニュアル</title>
+<meta name="description" content="店内POS（レジ端末・在庫端末）とWebの要発注リストの使い方。画面の写真つき。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f6f3; --surface:#ffffff; --surface2:#eef2ec; --ink:#17201b; --ink2:#46524b; --ink3:#7a867f;
+  --line:#dbe2dc; --accent:#1f6f50; --accent-sf:#e3f0e9; --mark:#ff6a2b; --mark-ink:#ffffff;
+  --warn:#9a5b00; --warn-sf:#fff4df; --note:#1d5c86; --note-sf:#e6f1f9; --danger:#b3261e; --danger-sf:#fdecea;
+  --code:#e9eee9;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1512; --surface:#161e19; --surface2:#1c2620; --ink:#e6efe9; --ink2:#a9b6ae; --ink3:#748079;
+    --line:#2a352f; --accent:#5cc493; --accent-sf:#15271e; --mark:#ff7a3d; --mark-ink:#1a0d06;
+    --warn:#f0b35a; --warn-sf:#2b2112; --note:#7fbde6; --note-sf:#14222c; --danger:#ff8a80; --danger-sf:#2c1614;
+    --code:#202b25;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f1512; --surface:#161e19; --surface2:#1c2620; --ink:#e6efe9; --ink2:#a9b6ae; --ink3:#748079;
+  --line:#2a352f; --accent:#5cc493; --accent-sf:#15271e; --mark:#ff7a3d; --mark-ink:#1a0d06;
+  --warn:#f0b35a; --warn-sf:#2b2112; --note:#7fbde6; --note-sf:#14222c; --danger:#ff8a80; --danger-sf:#2c1614;
+  --code:#202b25;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:16px}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Noto Sans JP",system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI",sans-serif;font-size:16px;line-height:1.8;-webkit-text-size-adjust:100%}
+a{color:var(--accent)}
+a:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--mark);outline-offset:2px;border-radius:4px}
+.wrap{display:grid;grid-template-columns:260px minmax(0,1fr);gap:40px;max-width:1240px;margin:0 auto;padding:0 24px}
+@media (max-width:960px){.wrap{grid-template-columns:minmax(0,1fr);gap:0;padding:0 16px}}
+
+/* ヘッダー */
+.hero{max-width:1240px;margin:0 auto;padding:40px 24px 24px}
+@media (max-width:960px){.hero{padding:28px 16px 16px}}
+.eyebrow{font-size:13px;font-weight:700;letter-spacing:.12em;color:var(--accent)}
+h1{font-size:clamp(28px,4.4vw,42px);line-height:1.25;margin:6px 0 10px;font-weight:900;text-wrap:balance}
+.lead{color:var(--ink2);max-width:62ch;margin:0}
+.meta{margin-top:14px;display:flex;flex-wrap:wrap;gap:8px}
+.chip{font-size:13px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--surface2);color:var(--ink2);border:1px solid var(--line)}
+
+/* 目次 */
+nav.toc{position:sticky;top:16px;align-self:start;max-height:calc(100vh - 32px);overflow:auto;padding:16px 0}
+nav.toc .tt{font-size:12px;font-weight:700;letter-spacing:.12em;color:var(--ink3);margin:0 0 8px}
+nav.toc ol{list-style:none;margin:0;padding:0;counter-reset:t}
+nav.toc li{counter-increment:t}
+nav.toc a{display:flex;gap:10px;text-decoration:none;color:var(--ink2);font-size:14px;line-height:1.5;padding:7px 10px;border-radius:8px}
+nav.toc a::before{content:counter(t);font-weight:900;color:var(--accent);min-width:1.4em;text-align:right}
+nav.toc a:hover{background:var(--surface2);color:var(--ink)}
+details.mtoc{display:none}
+@media (max-width:960px){
+  nav.toc{display:none}
+  details.mtoc{display:block;margin:0 0 20px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px 14px}
+  details.mtoc summary{cursor:pointer;font-weight:700;padding:10px 0}
+  details.mtoc ol{margin:0 0 12px;padding-left:1.4em}
+  details.mtoc a{text-decoration:none}
+}
+
+/* 本文 */
+main{min-width:0;padding-bottom:80px}
+section.ch{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:28px 32px;margin:0 0 24px}
+@media (max-width:640px){section.ch{padding:20px 16px;border-radius:14px}}
+h2{font-size:24px;line-height:1.35;margin:0 0 6px;font-weight:900;display:flex;gap:12px;align-items:baseline;text-wrap:balance}
+h2 .no{font-size:14px;font-weight:900;color:var(--accent);background:var(--accent-sf);padding:2px 10px;border-radius:8px;flex:none}
+h3{font-size:18px;margin:28px 0 6px;font-weight:700;text-wrap:balance}
+p{margin:8px 0}
+.sub{color:var(--ink2);margin:0 0 14px}
+ol.steps{margin:10px 0;padding:0;list-style:none;counter-reset:s}
+ol.steps>li{counter-increment:s;position:relative;padding:4px 0 4px 40px;margin:4px 0}
+ol.steps>li::before{content:counter(s);position:absolute;left:0;top:6px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:900;font-size:14px;display:grid;place-items:center;line-height:1}
+ul{padding-left:1.3em;margin:8px 0}
+li{margin:3px 0}
+b,strong{font-weight:700}
+.k{display:inline-block;font-weight:700;font-size:.92em;padding:0 7px;border-radius:6px;background:var(--code);border:1px solid var(--line);line-height:1.6;white-space:nowrap}
+.box{border-radius:12px;padding:12px 16px;margin:14px 0;border:1px solid}
+.box .bt{font-weight:900;font-size:14px;letter-spacing:.06em}
+.box p{margin:4px 0}
+.tip{background:var(--note-sf);border-color:color-mix(in srgb,var(--note) 30%,transparent)}.tip .bt{color:var(--note)}
+.warn{background:var(--warn-sf);border-color:color-mix(in srgb,var(--warn) 30%,transparent)}.warn .bt{color:var(--warn)}
+.danger{background:var(--danger-sf);border-color:color-mix(in srgb,var(--danger) 30%,transparent)}.danger .bt{color:var(--danger)}
+.tbl{overflow-x:auto;margin:12px 0}
+table{border-collapse:collapse;width:100%;font-size:15px;font-variant-numeric:tabular-nums}
+th,td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{font-size:13px;color:var(--ink2);font-weight:700;background:var(--surface2)}
+
+/* スクリーンショット＋マーカー */
+figure.shot{margin:18px 0 10px}
+.frame{position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#111;line-height:0}
+.frame img{width:100%;height:auto;display:block}
+figure.phone{max-width:380px}
+figure.half{max-width:620px}
+.mk{position:absolute;border:3px solid var(--mark);border-radius:10px;box-shadow:0 0 0 2px rgba(0,0,0,.35),0 0 18px color-mix(in srgb,var(--mark) 55%,transparent);pointer-events:none}
+.mk b{position:absolute;left:-14px;top:-14px;width:28px;height:28px;border-radius:50%;background:var(--mark);color:#fff;font-size:15px;font-weight:900;display:grid;place-items:center;line-height:1;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+@media (max-width:640px){.mk{border-width:2px}.mk b{width:22px;height:22px;font-size:12px;left:-11px;top:-11px}}
+figcaption{margin-top:8px}
+/* スマホ：タブレットの横長の写真は小さすぎて番号が重なるので、大きめに表示して横スクロールで見る */
+.swipe{display:none;font-size:12px;color:var(--ink3);margin:0 0 4px}
+@media (max-width:640px){
+  figure.shot:not(.phone):not(.half) .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -16px;padding:0 16px 6px}
+  figure.shot:not(.phone):not(.half) .frame{min-width:640px}
+  figure.shot:not(.phone):not(.half) .swipe{display:block}
+}
+ol.legend{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 16px}
+ol.legend li{display:flex;gap:9px;align-items:flex-start;font-size:15px;line-height:1.55;margin:0}
+ol.legend li b{flex:none;width:22px;height:22px;border-radius:50%;background:var(--mark);color:#fff;font-size:12px;font-weight:900;display:grid;place-items:center;margin-top:1px}
+.cap{font-size:13px;color:var(--ink3);margin-top:4px}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;align-items:start}
+@media (max-width:760px){.two{grid-template-columns:minmax(0,1fr)}}
+.foot{color:var(--ink3);font-size:13px;text-align:center;padding:24px 0 40px}
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="eyebrow">ビリヤードPOS ／ スタッフ向け</div>
+  <h1>操作マニュアル</h1>
+  <p class="lead">レジ端末・在庫端末とWebの要発注リストの使い方を、実際の画面の写真で説明します。写真の<b style="color:var(--mark)">オレンジの番号</b>は、写真のすぐ下の説明と対応しています。</p>
+  <div class="meta"><span class="chip">最終更新 2026年11月</span><span class="chip">写真の名前・金額はサンプル</span></div>
+</header>
+
+<div class="wrap">
+<nav class="toc" aria-label="目次">
+  <p class="tt">目次</p>
+  <ol>
+    <li><a href="#start">はじめに</a></li>
+    <li><a href="#main">メイン画面</a></li>
+    <li><a href="#checkin">お客さまの入店</a></li>
+    <li><a href="#settle">精算（1人）</a></li>
+    <li><a href="#medal">メダル</a></li>
+    <li><a href="#multi">まとめて精算</a></li>
+    <li><a href="#adjust">休憩・時間の調整・卓移動</a></li>
+    <li><a href="#items">物販（その場で会計）</a></li>
+    <li><a href="#history">会計履歴（取消・修正）</a></li>
+    <li><a href="#close">日報・締め</a></li>
+    <li><a href="#stock">在庫（棚卸し・ロス・発注点）</a></li>
+    <li><a href="#master">商品の登録・編集</a></li>
+    <li><a href="#reorder">要発注リスト（Web）</a></li>
+    <li><a href="#rules">料金のきまり</a></li>
+    <li><a href="#faq">困ったとき</a></li>
+  </ol>
+</nav>
+
+<main>
+<details class="mtoc"><summary>目次をひらく</summary>
+  <ol>
+    <li><a href="#start">はじめに</a></li><li><a href="#main">メイン画面</a></li><li><a href="#checkin">お客さまの入店</a></li>
+    <li><a href="#settle">精算（1人）</a></li><li><a href="#medal">メダル</a></li><li><a href="#multi">まとめて精算</a></li>
+    <li><a href="#adjust">休憩・時間の調整・卓移動</a></li><li><a href="#items">物販（その場で会計）</a></li>
+    <li><a href="#history">会計履歴（取消・修正）</a></li><li><a href="#close">日報・締め</a></li>
+    <li><a href="#stock">在庫（棚卸し・ロス・発注点）</a></li><li><a href="#master">商品の登録・編集</a></li>
+    <li><a href="#reorder">要発注リスト（Web）</a></li><li><a href="#rules">料金のきまり</a></li><li><a href="#faq">困ったとき</a></li>
+  </ol>
+</details>
+
+<!-- 1 -->
+<section class="ch" id="start">
+  <h2><span class="no">1</span>はじめに</h2>
+  <p class="sub">お店では役割の違う端末を使い分けています。</p>
+  <div class="tbl"><table>
+    <tr><th>端末・ページ</th><th>できること</th></tr>
+    <tr><td><b>レジ端末</b></td><td>入店・精算・物販・会計履歴・日報（締め）・商品の登録。在庫は<b>見るだけ</b>。</td></tr>
+    <tr><td><b>在庫端末</b>（2台目のタブレット）</td><td>棚卸し・ロス/調整・発注点の設定。</td></tr>
+    <tr><td><b>客用ディスプレイ</b></td><td>常連さんの利用時間と、お会計の金額を表示（操作はしません）。</td></tr>
+    <tr><td><b>要発注リスト（Web）</b></td><td>スマホで発注・入荷の登録。<a href="./reorder.html">reorder.html</a>（パスワードは売上レポートと同じ）</td></tr>
+  </table></div>
+  <div class="box tip"><div class="bt">共通の操作</div>
+    <p>画面は下からせり上がる「シート」で開きます。閉じるときは右上の <span class="k">閉じる</span>、またはシートの外の暗いところをタップ。</p>
+    <p>金額や個数のテンキーは、<b>指が触れた瞬間</b>に入力されます（強く押し続ける必要はありません）。</p>
+  </div>
+</section>
+
+<!-- 2 -->
+<section class="ch" id="main">
+  <h2><span class="no">2</span>メイン画面</h2>
+  <p class="sub">いまお店にいるお客さまがカードで並びます。経過時間と料金は自動で増えていきます。</p>
+  <figure class="shot" data-shot="main"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/main.jpg" alt="レジのメイン画面" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <ul>
+    <li>左上の <span class="k">通常日</span> は料金の日（通常日・レディースデー・半額デー）。日付から<b>自動</b>で切り替わります。</li>
+    <li><span class="k">在庫</span> の赤い数字は、在庫切れ・要発注の品数です。</li>
+    <li>カードには「入店時刻」「料金の内訳」、パック料金の時は「○時まで料金据え置き」も出ます。伝票に商品をつけている時は商品名と金額（後清算）も。</li>
+  </ul>
+</section>
+
+<!-- 3 -->
+<section class="ch" id="checkin">
+  <h2><span class="no">3</span>お客さまの入店</h2>
+  <h3>一般のお客さま</h3>
+  <div class="two">
+    <figure class="shot" data-shot="walkin-table"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/walkin-table.jpg" alt="卓を選ぶ画面" loading="lazy"></div></div><figcaption></figcaption></figure>
+    <figure class="shot" data-shot="walkin-count"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/walkin-count.jpg" alt="人数と区分の画面" loading="lazy"></div></div><figcaption></figcaption></figure>
+  </div>
+  <ol class="steps">
+    <li>メイン画面の <span class="k">＋ お客さま</span> をタップ。</li>
+    <li>使う卓（1〜8番）をタップ。</li>
+    <li>人数を <span class="k">−</span> <span class="k">＋</span> で合わせ、学生・女性の方は1人ずつ <span class="k">学生</span> <span class="k">女性</span> をタップ（精算の時にも変えられます）。</li>
+    <li><span class="k">○番に○名を登録</span> で入店。名前は「お客様1、お客様2…」と自動でつきます。</li>
+  </ol>
+  <h3>常連さん</h3>
+  <figure class="shot half" data-shot="regular"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/regular.jpg" alt="常連さんの入店画面" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <ol class="steps">
+    <li><span class="k">＋ 常連</span> をタップ。</li>
+    <li>名前をタップするだけで入店（区分は登録済み）。見つからない時は上の欄で名前・よみがなを検索。</li>
+  </ol>
+  <div class="box tip"><div class="bt">新しい常連さん</div><p><span class="k">＋ 常連の登録・編集</span> で「お名前」「よみ（必須）」と学生・女性を入れて <span class="k">追加</span>。名前は後から変えられないので、間違えたら削除して登録し直します（削除はすぐ消えます）。</p></div>
+</section>
+
+<!-- 4 -->
+<section class="ch" id="settle">
+  <h2><span class="no">4</span>精算（1人）</h2>
+  <p class="sub">お客さまのカードをタップすると精算画面が開きます。<b>料金は開いた時刻で止まります。</b></p>
+  <figure class="shot" data-shot="settle"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/settle.jpg" alt="精算画面" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <ol class="steps">
+    <li>右側で内容を確認。区分（学生・女性・子供）が違えばタップで直します。<b>子供は無料</b>です。</li>
+    <li>メダルがあれば入力（<a href="#medal">5. メダル</a>）。</li>
+    <li>左のテンキーでお預かりを入力 → おつりが出ます。</li>
+    <li><span class="k">この内容で精算する</span> → 確認画面で <span class="k">精算する</span>。</li>
+    <li>ドロワが開くのでおつりを渡し、<span class="k">閉じる</span>。</li>
+  </ol>
+  <div class="two">
+    <figure class="shot" data-shot="settle-confirm"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/settle-confirm.jpg" alt="精算の確認" loading="lazy"></div></div><figcaption></figcaption></figure>
+    <figure class="shot" data-shot="settle-done"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/settle-done.jpg" alt="精算しました" loading="lazy"></div></div><figcaption></figcaption></figure>
+  </div>
+  <div class="box tip"><div class="bt">伝票の商品を直す</div><p>右側の商品の <span class="k">−</span> <span class="k">＋</span> で数量を直せます。1個の時に <span class="k">−</span> を押すと「商品を外す」の確認が出ます。商品を追加する時は <span class="k">＋ 商品をつける</span>（物販画面が開くので選んで <span class="k">伝票につける</span>）。</p></div>
+  <div class="box warn"><div class="bt">こんな時は</div>
+    <p><b>メダルだけで¥0のお会計</b>：お預かり¥0のまま精算できます。ドロワは開きません。</p>
+    <p><b>入店を間違えた</b>（すぐ帰った等）：精算画面のいちばん下の「入店を取り消す（会計しない）」。会計は記録されません。</p>
+  </div>
+</section>
+
+<!-- 5 -->
+<section class="ch" id="medal">
+  <h2><span class="no">5</span>メダル</h2>
+  <p class="sub">種類（□・△・♡）ごとに枚数を入れます。合計枚数で割引されます。</p>
+  <figure class="shot half" data-shot="medal"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/medal.jpg" alt="メダルの入力" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <div class="tbl"><table>
+    <tr><th>どこに使う</th><th>割引</th><th>メモ</th></tr>
+    <tr><td><b>時間</b>（ビリヤード）</td><td>1枚＝<b>60分</b>引き</td><td>精算画面の「メダル（時間…）」に入力。</td></tr>
+    <tr><td><b>商品</b></td><td>1枚＝<b>300円</b>引き</td><td>区分ごと（飲食・備品・その他・たばこ）に入力。<b>おつりは出ません</b>。たばこは1箱ずつ当てます。</td></tr>
+    <tr><td>たばこの<b>カートン</b></td><td>使えません</td><td>カートン売りはメダル対象外。</td></tr>
+  </table></div>
+  <div class="box tip"><div class="bt">たくさん使う時</div><p><span class="k">＋10</span> で10枚ずつ増やせます。商品のメダルは「これで0円」になる枚数で止まります（それ以上は入りません）。</p></div>
+  <p class="cap">※ TKのメダルは取扱いを終了したので入力欄にありません（過去の記録の集計には残ります）。</p>
+</section>
+
+<!-- 6 -->
+<section class="ch" id="multi">
+  <h2><span class="no">6</span>まとめて精算</h2>
+  <p class="sub">複数のお客さまを一度に精算します。<b>5人のうち2人だけ</b>のように、選んだ人だけ精算できます。</p>
+  <figure class="shot" data-shot="pick"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/pick.jpg" alt="まとめて精算の選択" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <ol class="steps">
+    <li>卓の右の <span class="k">まとめて精算</span> をタップ（2名以上の卓に出ます）。</li>
+    <li>精算する人のカードをタップ → ✓ が付きます（もう一度で外れる）。別の卓の人や常連さんも選べます。</li>
+    <li>下のバーで人数と合計を確認して <span class="k">精算へ（○名）</span>。</li>
+    <li>精算画面には選んだ人だけが並びます。あとは<a href="#settle">1人の時</a>と同じ（メダルは1人ずつ入力できます）。</li>
+  </ol>
+  <figure class="shot" data-shot="multi-settle"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/multi-settle.jpg" alt="まとめて精算の画面" loading="lazy"></div></div><figcaption></figcaption></figure>
+</section>
+
+<!-- 7 -->
+<section class="ch" id="adjust">
+  <h2><span class="no">7</span>休憩・時間の調整・卓移動</h2>
+  <p class="sub">精算画面（1人の時）のボタンから行います。</p>
+  <div class="tbl"><table>
+    <tr><th>ボタン</th><th>使う時</th><th>理由</th></tr>
+    <tr><td><span class="k">⏸ 休憩する（中断）</span></td><td>休憩の間は料金を止める。再開は <span class="k">▶ 休憩を終了（再開）</span>。カードが赤くなります。</td><td>不要</td></tr>
+    <tr><td><span class="k">中断時間を編集</span></td><td>休憩の開始・長さを後から直す。</td><td>不要</td></tr>
+    <tr><td><span class="k">終了時刻を調整</span></td><td>終了の打ち忘れ・申告など。</td><td><b>必須</b></td></tr>
+    <tr><td><span class="k">開始時刻を調整</span></td><td>入店の打ち忘れ・書き間違い。</td><td><b>必須</b></td></tr>
+    <tr><td><span class="k">卓を移動</span></td><td>一般のお客さまの卓を変える（時間はそのまま）。</td><td>不要</td></tr>
+  </table></div>
+  <figure class="shot" data-shot="adjust-end"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/adjust-end.jpg" alt="終了時刻の調整" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <p>調整した内容と理由は記録に残り、精算画面と会計履歴に表示されます。</p>
+</section>
+
+<!-- 8 -->
+<section class="ch" id="items">
+  <h2><span class="no">8</span>物販（その場で会計）</h2>
+  <p class="sub">ビリヤードをしないお客さまの商品は、メイン画面の <span class="k">物販</span> から会計します。</p>
+  <figure class="shot" data-shot="items"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/items.jpg" alt="物販の画面" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <ol class="steps">
+    <li>カテゴリを選び、品数の多いカテゴリは値段のボタンで絞ります（<span class="k">すべて</span> で全部）。</li>
+    <li>商品をタップすると右の購入リストに入ります。数量は <span class="k">−</span> <span class="k">＋</span>。</li>
+    <li><span class="k">清算する</span> → メダルがあれば入力し、お預かりを入れて <span class="k">会計する</span>。</li>
+  </ol>
+  <figure class="shot" data-shot="items-pay"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/items-pay.jpg" alt="物販のお会計" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <h3>たばこ</h3>
+  <figure class="shot" data-shot="tobacco"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/tobacco.jpg" alt="たばこの棚番号検索" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <ul>
+    <li>お客さまの言う<b>棚番号</b>をテンキーで入れると、その銘柄が出ます（番号ぴったりで検索）。</li>
+    <li><span class="k">カートン売り（10個）</span> にすると10個単位（値段は10倍・メダル不可）で会計します。</li>
+  </ul>
+  <h3>備品（チョーク・タップなど）</h3>
+  <figure class="shot half" data-shot="goods-price"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/goods-price.jpg" alt="備品の金額入力" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <p>備品は値段が毎回違うので、種類を選んで商品をタップ → <b>今回の金額</b>を入れて <span class="k">かごに入れる</span>。</p>
+  <div class="box tip"><div class="bt">両替</div><p>メイン画面の <span class="k">両替</span> で、会計なしでドロワを開けられます。</p></div>
+</section>
+
+<!-- 9 -->
+<section class="ch" id="history">
+  <h2><span class="no">9</span>会計履歴（取消・修正）</h2>
+  <p class="sub">打ち間違えた会計は、ここから直します。取消・修正ができるのは<b>本日の締める前の分だけ</b>です。</p>
+  <figure class="shot" data-shot="history"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/history.jpg" alt="会計履歴" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <div class="two">
+    <div>
+      <h3>取消（なかったことにする）</h3>
+      <figure class="shot" data-shot="void"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/void.jpg" alt="精算の取消" loading="lazy"></div></div><figcaption></figcaption></figure>
+      <ol class="steps">
+        <li><span class="k">取消</span> をタップ。返金する金額が表示されます。</li>
+        <li>ビリヤードの会計は、お客さまがまだ店内なら <span class="k">席に戻す</span>（時間はそのまま続く）。</li>
+        <li>理由を選んで（必須）<span class="k">取消する</span>。商品の在庫は戻ります。</li>
+      </ol>
+    </div>
+    <div>
+      <h3>修正（取消して作り直す）</h3>
+      <figure class="shot" data-shot="redo"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/redo.jpg" alt="修正" loading="lazy"></div></div><figcaption></figcaption></figure>
+      <ol class="steps">
+        <li><span class="k">修正</span> → <span class="k">取消して作り直す</span>。</li>
+        <li>物販は内容がカートに戻るので、直して <span class="k">会計する</span>。</li>
+        <li>ビリヤードはお客さまが席に戻るので、直してもう一度精算。</li>
+      </ol>
+    </div>
+  </div>
+  <p class="cap">取消した会計は消えずに「取消（時刻）／理由」として残ります。<span class="k">◀ 前の日</span> で締めた日の会計も見返せます（見るだけ）。</p>
+</section>
+
+<!-- 10 -->
+<section class="ch" id="close">
+  <h2><span class="no">10</span>日報・締め</h2>
+  <p class="sub">営業の最後に、レジの現金を数えて「締め」ます。営業日は<b>昼12時〜翌日昼12時</b>で区切ります。</p>
+  <figure class="shot" data-shot="dayreport"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/dayreport.jpg" alt="日報・締め" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <ol class="steps">
+    <li>メイン画面の <span class="k">日報・締め</span>。</li>
+    <li>レジの現金を数え、テンキーで「実査した現金」に入力。「レジにあるはずの現金」と合っていれば「ぴったり合っています」、違えば多い／足りない金額が出ます（合わない時はメモに理由）。</li>
+    <li><span class="k">レジ現金を数えました（タップ）</span> → <span class="k">締める（CSVを保存）</span> → 確認で <span class="k">締める</span>。</li>
+    <li>CSVの保存先を選ぶ画面が出たら保存（バックアップは自動でクラウドにも送られます）。</li>
+  </ol>
+  <div class="box danger"><div class="bt">締めたあとは</div><p>その日の会計は<b>取消・修正できなくなります</b>。間違いが見つかったら翌営業日に調整として記録します。まだ店内のお客さまの会計は、精算した日の売上になります。</p></div>
+</section>
+
+<!-- 11 -->
+<section class="ch" id="stock">
+  <h2><span class="no">11</span>在庫（棚卸し・ロス・発注点）</h2>
+  <p class="sub">会計すると在庫は自動で減ります。数を直すのは<b>在庫端末</b>だけです（レジ端末は見るだけ）。</p>
+  <figure class="shot" data-shot="inv-main"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/inv-main.jpg" alt="在庫端末の在庫管理" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <ul>
+    <li>右の表示：<span class="k">残6・要発注</span>＝発注点を下回った、<span class="k">残0</span>＝在庫切れ、<span class="k">未管理</span>＝まだ数えていない商品。</li>
+    <li><span class="k">要発注だけ</span>・<span class="k">販売30日順</span>・<span class="k">棚卸し古い順</span>で絞り込み・並べ替え、<span class="k">履歴</span>で在庫の動き。</li>
+  </ul>
+  <div class="two">
+    <div>
+      <h3>棚卸し（数え直した数に合わせる）</h3>
+      <figure class="shot" data-shot="stocktake"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/stocktake.jpg" alt="棚卸し" loading="lazy"></div></div><figcaption></figcaption></figure>
+      <p>実際に数えた数を入れて <span class="k">この数にする</span>。</p>
+    </div>
+    <div>
+      <h3>ロス/調整（売れずに減った分）</h3>
+      <figure class="shot" data-shot="loss"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/loss.jpg" alt="ロス/調整" loading="lazy"></div></div><figcaption></figcaption></figure>
+      <p>理由（廃棄・破損・期限切れ・盗難・まかない など）と数を入れて <span class="k">この数を減らす</span>。棚卸しの前に入れるとズレの理由が分かります。</p>
+    </div>
+  </div>
+  <h3>発注点・発注ロット</h3>
+  <figure class="shot half" data-shot="order-setting"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/order-setting.jpg" alt="発注の設定" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <p>商品名の下の「発注点…（タップで設定）」をタップ。<b>発注点</b>より少なくなると要発注になり、Webの要発注リストに出ます。<b>発注ロット</b>はケースの入り数（24本など）。</p>
+  <div class="box tip"><div class="bt">クラウド同期</div><p>在庫画面の上に「クラウド同期：同期済み（最終受信 ○:○○）」と緑で出ていれば最新です。黄色で「未送信あり」「まだ同期していません」の時は、通信を確認して <span class="k">最新に更新</span>。棚卸しの前に押しておくと安心です。</p></div>
+</section>
+
+<!-- 12 -->
+<section class="ch" id="master">
+  <h2><span class="no">12</span>商品の登録・編集</h2>
+  <p class="sub">物販画面の <span class="k">＋ 商品の登録・編集</span> から開きます。</p>
+  <figure class="shot" data-shot="master-drink"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/master-drink.jpg" alt="商品の登録・編集" loading="lazy"></div></div><figcaption></figcaption></figure>
+  <ul>
+    <li><b>追加</b>：カテゴリを選び、商品名と値段を入れて <span class="k">追加</span>（備品は種類を選んで名前だけ）。</li>
+    <li><b>変更</b>：名前・値段の欄をタップして書き換え（欄から離れると保存）。</li>
+    <li><b>削除</b>：<span class="k">削除</span> はすぐ消えます（確認なし）。</li>
+    <li><b>写真</b>（ドリンク・お菓子・ラーメン）：左の枠をタップで端末の写真から選ぶ、長押しで外す。まとめて付ける時は画像のファイル名を商品名と同じにして <span class="k">写真をまとめて取り込む</span>。</li>
+  </ul>
+  <h3>たばこ</h3>
+  <div class="two">
+    <figure class="shot" data-shot="master-tobacco"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/master-tobacco.jpg" alt="たばこの一覧" loading="lazy"></div></div><figcaption></figcaption></figure>
+    <figure class="shot" data-shot="brand"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/brand.jpg" alt="別銘柄に変更" loading="lazy"></div></div><figcaption></figcaption></figure>
+  </div>
+  <ul>
+    <li>たばこは<b>棚番号ごとの枠</b>です。新規登録・削除・番号の変更はできません。</li>
+    <li>値上げなど<b>値段だけ</b>なら、一覧の値段の欄を書き換えます。</li>
+    <li>銘柄を入れ替える時は <span class="k">別銘柄に変更</span> → 新しい銘柄名と値段 → <span class="k">保存（リセット）</span>（30日の販売数を数え直します）。</li>
+    <li>取扱いをやめる時は同じ画面の <span class="k">この枠を空きスロットにする（取扱い終了）</span>。会計・在庫・要発注に出なくなります。</li>
+  </ul>
+  <div class="box warn"><div class="bt">空きスロットにする前に</div><p>在庫が残っている時は、先に在庫端末で棚卸し（0個）かロス/調整をしておくと、次に入れる銘柄に古い在庫数が引き継がれません。</p></div>
+</section>
+
+<!-- 13 -->
+<section class="ch" id="reorder">
+  <h2><span class="no">13</span>要発注リスト（Web）</h2>
+  <p class="sub">発注と入荷はスマホのWebページで行います。<a href="./reorder.html">要発注リストを開く</a>（パスワードは売上レポートと同じ。「この端末にパスワードを保存」で次から自動で開きます）。</p>
+  <h3>① 発注</h3>
+  <div class="two">
+    <figure class="shot phone" data-shot="reorder-amazon"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/reorder-amazon.jpg" alt="ドリンクの発注" loading="lazy"></div></div><figcaption></figcaption></figure>
+    <div>
+      <p><b>ドリンク</b>（上の緑の枠）</p>
+      <ol class="steps">
+        <li>数量を確認（<span class="k">−</span> <span class="k">＋</span>）。</li>
+        <li><span class="k">Amazon</span>：Amazonが開くのでカートに入れる（「カート追加済み」になる）。<br><span class="k">別発注</span>：Amazon以外で買う物。<br><span class="k">×</span>：今回は発注しない。</li>
+        <li>Amazonで注文を確定したら、下の <span class="k">一括発注：カート追加済みを入荷待ちにする</span>。別発注の分は <span class="k">別発注ぶんを発注済み（入荷待ち）にする</span>。</li>
+      </ol>
+      <p class="cap">✎（鉛筆）で商品ごとのAmazonリンクを登録・変更できます。</p>
+    </div>
+  </div>
+  <div class="two">
+    <figure class="shot phone" data-shot="reorder-list"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/reorder-list.jpg" alt="カテゴリ別の発注" loading="lazy"></div></div><figcaption></figcaption></figure>
+    <div>
+      <p><b>ドリンク以外</b>（たばこ・お菓子など）</p>
+      <ol class="steps">
+        <li>カテゴリを選ぶ。たばこは棚番号順に並びます。</li>
+        <li>数量を確認。<span class="k">0</span> で今回は見送り、数字をタップで直接入力。</li>
+        <li>下の <span class="k">発注する</span>。<b>お菓子</b>は <span class="k">📧 メールで発注</span> で発注書（CSV）を問屋さんへメールします。</li>
+      </ol>
+    </div>
+  </div>
+  <h3>② 入荷（届いたら）</h3>
+  <div class="two">
+    <figure class="shot phone" data-shot="reorder-receive"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/reorder-receive.jpg" alt="入荷" loading="lazy"></div></div><figcaption></figcaption></figure>
+    <div>
+      <ol class="steps">
+        <li><span class="k">② 入荷（発注ごと）</span> タブ。発注した時の単位で並んでいます。</li>
+        <li>届いた数を確認（分けて届いた時は届いた分だけ。残りは次回に残ります）。</li>
+        <li><b>ドリンク</b>は商品ごとの <span class="k">入荷</span>、それ以外はカードの <span class="k">入荷を登録</span>。</li>
+        <li>仕入れの金額を入力（分からなければ空欄でOK）。</li>
+      </ol>
+      <p class="cap">間違えて発注した時は <span class="k">発注取消</span>（在庫は変わりません）。</p>
+    </div>
+  </div>
+  <div class="two">
+    <figure class="shot phone" data-shot="reorder-history"><p class="swipe">← 写真は横にスクロールできます</p><div class="scroll"><div class="frame"><img src="manual/img/reorder-history.jpg" alt="入荷履歴" loading="lazy"></div></div><figcaption></figcaption></figure>
+    <div>
+      <p><b>入荷履歴</b>（入荷タブの下）</p>
+      <ul>
+        <li><span class="k">金額入力</span>／<span class="k">金額修正</span>：仕入れの金額をあとから入れる・直す。</li>
+        <li><span class="k">差し戻し</span>：間違えて入荷した時に取り消す（在庫も戻り、入荷待ちに戻ります）。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 14 -->
+<section class="ch" id="rules">
+  <h2><span class="no">14</span>料金のきまり</h2>
+  <p class="sub">料金は自動で計算され、いちばん安い組み合わせ（10分ごと・パック）が選ばれます。</p>
+  <div class="tbl"><table>
+    <tr><th>区分</th><th>10分</th><th>パック</th></tr>
+    <tr><td>一般</td><td>¥90</td><td>3時間 ¥1,200 ／ 5時間 ¥1,700 ／ 8時間 ¥2,700</td></tr>
+    <tr><td>学生・女性</td><td>¥80</td><td>3時間 ¥800 ／ 6時間 ¥1,400 ／ 9時間 ¥2,000</td></tr>
+    <tr><td>子供</td><td colspan="2">無料</td></tr>
+  </table></div>
+  <ul>
+    <li>時間は10分単位（四捨五入）。</li>
+    <li><b>レディースデー</b>（第1・3・5水曜）：女性は1時間¥100（1時間単位で切り上げ）。男性は通常料金。パックなし。</li>
+    <li><b>半額デー</b>（第2・4水曜）：全員10分の料金が半額。パックなし。</li>
+    <li>特別な日の料金は11時から（11時より前は前の日の扱い）。</li>
+    <li>パック料金や特別な日は、カードに「○時まで料金据え置き」と出ます。</li>
+  </ul>
+</section>
+
+<!-- 15 -->
+<section class="ch" id="faq">
+  <h2><span class="no">15</span>困ったとき</h2>
+  <div class="tbl"><table>
+    <tr><th>こんな時</th><th>こうする</th></tr>
+    <tr><td>精算・物販を打ち間違えた</td><td>締める前なら<a href="#history">会計履歴</a>から「取消」か「修正」。</td></tr>
+    <tr><td>締めたあとに間違いに気づいた</td><td>取消できません。翌営業日に調整として記録します（店長へ）。</td></tr>
+    <tr><td>在庫の数が合わない</td><td>在庫端末で「最新に更新」→ 数え直して「棚卸し」。壊れた・捨てた分は先に「ロス/調整」。</td></tr>
+    <tr><td>メイン画面に「未アップロードの締めがあります」</td><td>表示をタップ →「バックアップ・復元」→「クラウドへ今すぐ保存」（管理者）。</td></tr>
+    <tr><td>「前回アプリが異常終了しました」と出た</td><td>在店データは復元されています。内容を確認して「閉じる」。続くようなら店長へ。</td></tr>
+    <tr><td>ドロワが開かない・レシートが出ない</td><td>プリンタの電源・Bluetoothを確認。「両替」で開くか試す。だめなら管理者の「レシートプリンタ」で接続テスト。</td></tr>
+    <tr><td>要発注リストに商品が出ない</td><td>在庫端末でその商品の発注点が入っているか確認（発注点より少ない時だけ出ます）。</td></tr>
+  </table></div>
+  <p class="cap">管理者メニュー（PINが必要）：ゲーム売上の入力、売上レポート、バックアップ・復元、レシートプリンタの設定、客用ディスプレイの設定。</p>
+</section>
+
+<p class="foot">ビリヤードPOS 操作マニュアル ／ 写真の名前・金額はサンプルです</p>
+</main>
+</div>
+
+<script id="shots" type="application/json">__SHOTS__</script>
+<script>
+// 写真に番号マーカー（枠＋番号）を重ね、写真の下に番号つきの説明を並べる。位置は撮影時に記録した％。
+(function () {
+  var data = {};
+  try { data = JSON.parse(document.getElementById('shots').textContent); } catch (e) { return; }
+  document.querySelectorAll('figure.shot').forEach(function (fig) {
+    var s = data[fig.getAttribute('data-shot')];
+    if (!s || !s.markers || !s.markers.length) return;
+    var frame = fig.querySelector('.frame'), cap = fig.querySelector('figcaption');
+    var ol = document.createElement('ol'); ol.className = 'legend';
+    s.markers.forEach(function (m) {
+      var mk = document.createElement('div'); mk.className = 'mk';
+      mk.style.left = m.x + '%'; mk.style.top = m.y + '%'; mk.style.width = m.w + '%'; mk.style.height = m.h + '%';
+      var b = document.createElement('b'); b.textContent = m.n; mk.appendChild(b); frame.appendChild(mk);
+      var li = document.createElement('li'); var n = document.createElement('b'); n.textContent = m.n;
+      li.appendChild(n); li.appendChild(document.createTextNode(m.label)); ol.appendChild(li);
+    });
+    if (cap) cap.appendChild(ol);
+  });
+})();
+</script>
+</body>
+</html>
